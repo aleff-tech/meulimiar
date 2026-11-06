@@ -166,6 +166,7 @@ git commit -m "feat: generate periodized race plans" -m "Co-authored-by: Copilot
 **Files:**
 - Modify: `src\components\TrainingForm.tsx`
 - Modify: `src\App.tsx`
+- Modify: `src\components\TrainingPreview.tsx`
 - Modify: `src\styles.css`
 - Test: `src\App.test.tsx`
 
@@ -185,7 +186,7 @@ Expected: FAIL because the form still asks for weeks/preference and the App uses
 
 - [ ] **Step 3: Implement the new form and App integration**
 
-Add date input, goal-time fields, and an unchecked 18+ confirmation checkbox; remove the weeks and load-preference controls and their unused preference styles. Keep the existing distance, 5 km time, weight, height, weekly km, and sessions inputs. Generate the calendar plan with the current local date, preserve BMI numeric display, and gate only adult-specific BMI guidance on `adultConfirmed`.
+Add date input, goal-time fields, and an unchecked 18+ confirmation checkbox; remove the weeks and load-preference controls and their unused preference styles. Keep the existing distance, 5 km time, weight, height, weekly km, and sessions inputs. Generate the calendar plan with the current local date, preserve BMI numeric display, and gate only adult-specific BMI guidance in `TrainingPreview` on `adultConfirmed`.
 
 - [ ] **Step 4: Run the App tests and verify they pass**
 
