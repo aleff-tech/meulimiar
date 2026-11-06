@@ -82,6 +82,23 @@ describe('running plan form and preview', () => {
     expect(screen.getAllByText('Semana 1').length).toBeGreaterThan(0);
   });
 
+  it('shows session distances to the nearest 0.01 km', () => {
+    render(<App />);
+    fillValidForm();
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Km corridos por semana' }), {
+      target: { value: '1' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Sessões por semana' }), {
+      target: { value: '1' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Semanas até a prova' }), {
+      target: { value: '4' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
+
+    expect(screen.getByText('1,05 km')).toBeTruthy();
+  });
+
   it('warns when the 5 km time is outside the pace reference range', () => {
     render(<App />);
     fillValidForm({ hours: '0', minutes: '19', seconds: '59' });

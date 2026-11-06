@@ -19,7 +19,8 @@ const targetNames: Record<RunnerProfile['targetDistanceKm'], string> = {
 
 function formatDistance(distanceKm: number): string {
   return new Intl.NumberFormat('pt-BR', {
-    maximumFractionDigits: 1,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(distanceKm);
 }
 

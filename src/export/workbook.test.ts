@@ -53,6 +53,24 @@ describe('createTrainingWorkbook', () => {
     expect(summaryRows).toContainEqual(['Distância-alvo (km)', 10]);
     expect(summaryRows).toContainEqual(['IMC informativo', 22.9]);
   });
+
+  it('preserves two-decimal session distances as formatted numeric cells', () => {
+    const lowBaseProfile = {
+      ...profile,
+      currentWeeklyKm: 1,
+      sessionsPerWeek: 1,
+      weeksAvailable: 4,
+    };
+    const lowBasePlan = buildTrainingPlan(lowBaseProfile, paces);
+    const workbook = createTrainingWorkbook(lowBaseProfile, paces, 22.9, lowBasePlan);
+    const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const reopened = XLSX.read(bytes, { type: 'array', cellNF: true });
+    const weekTwoDistance = reopened.Sheets['Plano semanal']['D3'];
+
+    expect(weekTwoDistance?.v).toBe(1.05);
+    expect(weekTwoDistance?.z).toBe('0.00');
+  });
+
 });
 
 describe('downloadTrainingWorkbook', () => {

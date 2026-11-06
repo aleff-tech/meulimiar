@@ -65,6 +65,10 @@ export function createTrainingWorkbook(
   summary['!cols'] = [{ wch: 30 }, { wch: 64 }];
 
   const calendar = XLSX.utils.aoa_to_sheet(calendarRows);
+  for (let row = 2; row <= calendarRows.length; row += 1) {
+    const distanceCell = calendar[`D${row}`];
+    if (distanceCell) distanceCell.z = '0.00';
+  }
   calendar['!cols'] = [
     { wch: 10 },
     { wch: 14 },

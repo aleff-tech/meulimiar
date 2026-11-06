@@ -36,13 +36,44 @@ describe('buildTrainingPlan', () => {
     expect(plan.weeks.map((week) => week.weeklyDistanceKm)).toEqual([
       20,
       21,
-      22.1,
-      17.7,
-      23.2,
-      24.4,
-      25.6,
-      15.4,
+      22.05,
+      17.64,
+      23.15,
+      24.3,
+      25.51,
+      15.3,
     ]);
+  });
+
+  it.each([
+    ['light', 0.05],
+    ['aggressive', 0.08],
+  ] as const)('respects %s growth, recovery, and taper limits from a 1 km base', (
+    preference,
+    growthRate,
+  ) => {
+    const plan = buildTrainingPlan(
+      { ...baseProfile, currentWeeklyKm: 1, sessionsPerWeek: 1, weeksAvailable: 8, preference },
+      paces,
+    );
+    let peak = plan.weeks[0].weeklyDistanceKm;
+
+    expect(plan.weeks[1].weeklyDistanceKm).toBe(1 + growthRate);
+
+    for (const week of plan.weeks.slice(1)) {
+      const currentHundredths = Math.round(week.weeklyDistanceKm * 100);
+
+      if (week.week === 8) {
+        expect(currentHundredths).toBeLessThanOrEqual(Math.floor(peak * 0.6 * 100 + 1e-8));
+      } else if (week.week % 4 === 0) {
+        expect(currentHundredths).toBeLessThanOrEqual(Math.floor(peak * 0.8 * 100 + 1e-8));
+      } else {
+        expect(currentHundredths).toBeLessThanOrEqual(
+          Math.floor(peak * (1 + growthRate) * 100 + 1e-8),
+        );
+        peak = week.weeklyDistanceKm;
+      }
+    }
   });
 
   it('uses the entered weekly distance as the first week even at a low base', () => {
@@ -67,9 +98,62 @@ describe('buildTrainingPlan', () => {
 
     for (const week of plan.weeks) {
       const sessionDistance = week.sessions.reduce((sum, session) => sum + session.distanceKm, 0);
-      expect(Math.round(sessionDistance * 10) / 10).toBe(week.weeklyDistanceKm);
-      expect(week.sessions.every((session) => session.distanceKm > 0)).toBe(true);
+      expect(Math.round(sessionDistance * 100)).toBe(Math.round(week.weeklyDistanceKm * 100));
+      expect(week.sessions.every((session) => session.distanceKm >= 0)).toBe(true);
     }
+  });
+
+  it.each([
+    [3, 20],
+    [5, 25],
+    [10, 30],
+    [21.1, 35],
+    [42.2, 40],
+  ] as const)('uses the long-run share for a %s km target (expected %s km)', (
+    targetDistanceKm,
+    expectedLongRunKm,
+  ) => {
+    const plan = buildTrainingPlan(
+      {
+        ...baseProfile,
+        targetDistanceKm,
+        currentWeeklyKm: 100,
+        sessionsPerWeek: 2,
+        weeksAvailable: 6,
+      },
+      paces,
+    );
+
+    expect(plan.weeks[0].sessions.find((session) => session.type === 'long')?.distanceKm).toBe(
+      expectedLongRunKm,
+    );
+  });
+
+  it('warns when the longest planned long run is below 75% of the target', () => {
+    const plan = buildTrainingPlan(
+      { ...baseProfile, targetDistanceKm: 42.2, currentWeeklyKm: 1, sessionsPerWeek: 2, weeksAvailable: 4 },
+      paces,
+    );
+
+    expect(plan.warnings.some((warning) => /longa/i.test(warning))).toBe(true);
+  });
+
+  it('warns when one weekly session means there is no long run', () => {
+    const plan = buildTrainingPlan(
+      { ...baseProfile, sessionsPerWeek: 1, weeksAvailable: 6 },
+      paces,
+    );
+
+    expect(plan.warnings.some((warning) => /longo/i.test(warning))).toBe(true);
+  });
+
+  it('does not warn about long-run distance when a 3 km plan reaches the threshold', () => {
+    const plan = buildTrainingPlan(
+      { ...baseProfile, targetDistanceKm: 3, currentWeeklyKm: 20, sessionsPerWeek: 2, weeksAvailable: 6 },
+      paces,
+    );
+
+    expect(plan.warnings.some((warning) => /longa/i.test(warning))).toBe(false);
   });
 
   it.each([
@@ -84,7 +168,7 @@ describe('buildTrainingPlan', () => {
       paces,
     );
 
-    expect(plan.warnings.length).toBeGreaterThan(0);
+    expect(plan.warnings.some((warning) => /^o ciclo de/i.test(warning))).toBe(true);
   });
 
   it.each([
@@ -102,7 +186,7 @@ describe('buildTrainingPlan', () => {
       paces,
     );
 
-    expect(plan.warnings).toHaveLength(0);
+    expect(plan.warnings.some((warning) => /^o ciclo de/i.test(warning))).toBe(false);
   });
 
   it('does not change the training schedule when only BMI inputs change', () => {

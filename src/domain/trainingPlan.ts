@@ -29,8 +29,18 @@ const minimumWeeks: Record<TargetDistanceKm, number> = {
   42.2: 16,
 };
 
-function roundKm(distanceKm: number): number {
-  return Math.round((distanceKm + Number.EPSILON) * 10) / 10;
+const longRunShare: Record<TargetDistanceKm, number> = {
+  3: 0.2,
+  5: 0.25,
+  10: 0.3,
+  21.1: 0.35,
+  42.2: 0.4,
+};
+
+const qualityShare = 0.2;
+
+function toHundredthsFloor(distanceKm: number): number {
+  return Math.floor(distanceKm * 100 + 1e-8);
 }
 
 function sessionTypes(sessionsPerWeek: number): WorkoutSession['type'][] {
@@ -40,17 +50,31 @@ function sessionTypes(sessionsPerWeek: number): WorkoutSession['type'][] {
   return ['quality', 'long', ...Array.from({ length: sessionsPerWeek - 2 }, () => 'easy' as const)];
 }
 
-function distributeDistance(weeklyDistanceKm: number, types: WorkoutSession['type'][]): number[] {
-  if (types.length === 1) return [weeklyDistanceKm];
-
+function distributeDistance(
+  weeklyDistanceHundredths: number,
+  types: WorkoutSession['type'][],
+  targetDistanceKm: TargetDistanceKm,
+): number[] {
+  const targetLongRunShare = longRunShare[targetDistanceKm];
   const shares =
-    types.length === 2
-      ? [0.55, 0.45]
-      : [0.2, 0.3, ...Array.from({ length: types.length - 2 }, () => 0.5 / (types.length - 2))];
+    types.length === 1
+      ? [1]
+      : types.length === 2
+        ? [1 - targetLongRunShare, targetLongRunShare]
+        : [
+            qualityShare,
+            targetLongRunShare,
+            ...Array.from(
+              { length: types.length - 2 },
+              () => (1 - qualityShare - targetLongRunShare) / (types.length - 2),
+            ),
+          ];
 
-  const distances = shares.slice(0, -1).map((share) => roundKm(weeklyDistanceKm * share));
+  const distances = shares
+    .slice(0, -1)
+    .map((share) => Math.floor(weeklyDistanceHundredths * share + 1e-8));
   const assignedDistance = distances.reduce((total, distance) => total + distance, 0);
-  distances.push(roundKm(weeklyDistanceKm - assignedDistance));
+  distances.push(weeklyDistanceHundredths - assignedDistance);
 
   return distances;
 }
@@ -87,34 +111,68 @@ function sessionPaceAndDescription(
       };
 }
 
-function buildWarnings(profile: RunnerProfile): string[] {
+function buildWarnings(profile: RunnerProfile, weeks: TrainingWeek[]): string[] {
+  const warnings: string[] = [];
   const requiredWeeks = minimumWeeks[profile.targetDistanceKm];
-  if (profile.weeksAvailable >= requiredWeeks) return [];
 
-  return [
-    `O ciclo de ${profile.weeksAvailable} semanas é curto para a distância escolhida; não tente compensar aumentando a carga rapidamente.`,
-  ];
+  if (profile.weeksAvailable < requiredWeeks) {
+    warnings.push(
+      `O ciclo de ${profile.weeksAvailable} semanas é curto para a distância escolhida; não tente compensar aumentando a carga rapidamente.`,
+    );
+  }
+
+  if (profile.sessionsPerWeek === 1) {
+    warnings.push(
+      'Com uma sessão por semana, o plano não inclui treino longo; ele não desenvolve a distância necessária para a prova.',
+    );
+  } else {
+    const longestRunHundredths = weeks.reduce(
+      (longest, week) =>
+        Math.max(
+          longest,
+          ...week.sessions
+            .filter((session) => session.type === 'long')
+            .map((session) => toHundredthsFloor(session.distanceKm)),
+        ),
+      0,
+    );
+    const targetDistanceHundredths = Math.round(profile.targetDistanceKm * 100);
+
+    if (longestRunHundredths * 100 < targetDistanceHundredths * 75) {
+      warnings.push(
+        'A maior corrida longa planejada fica abaixo de 75% da distância-alvo; o ciclo pode não ser suficiente para a prova. Não aumente a carga para compensar.',
+      );
+    }
+  }
+
+  return warnings;
 }
 
 export function buildTrainingPlan(profile: RunnerProfile, paces: PaceTargets): TrainingPlan {
   const types = sessionTypes(profile.sessionsPerWeek);
   const growthRate = profile.preference === 'aggressive' ? 0.08 : 0.05;
   const weeks: TrainingWeek[] = [];
-  let peakWeeklyDistance = roundKm(profile.currentWeeklyKm);
+  let peakWeeklyDistanceHundredths = toHundredthsFloor(profile.currentWeeklyKm);
 
   for (let weekNumber = 1; weekNumber <= profile.weeksAvailable; weekNumber += 1) {
-    let targetWeeklyDistance = peakWeeklyDistance;
+    let targetWeeklyDistanceHundredths = peakWeeklyDistanceHundredths;
 
     if (weekNumber === profile.weeksAvailable) {
-      targetWeeklyDistance = roundKm(peakWeeklyDistance * 0.6);
+      targetWeeklyDistanceHundredths = Math.floor(peakWeeklyDistanceHundredths * 0.6 + 1e-8);
     } else if (weekNumber > 1 && weekNumber % 4 === 0) {
-      targetWeeklyDistance = roundKm(peakWeeklyDistance * 0.8);
+      targetWeeklyDistanceHundredths = Math.floor(peakWeeklyDistanceHundredths * 0.8 + 1e-8);
     } else if (weekNumber > 1) {
-      targetWeeklyDistance = roundKm(peakWeeklyDistance * (1 + growthRate));
-      peakWeeklyDistance = targetWeeklyDistance;
+      targetWeeklyDistanceHundredths = Math.floor(
+        peakWeeklyDistanceHundredths * (1 + growthRate) + 1e-8,
+      );
+      peakWeeklyDistanceHundredths = targetWeeklyDistanceHundredths;
     }
 
-    const distances = distributeDistance(targetWeeklyDistance, types);
+    const distances = distributeDistance(
+      targetWeeklyDistanceHundredths,
+      types,
+      profile.targetDistanceKm,
+    );
     const sessions = types.map((type, index): WorkoutSession => {
       const { paceSecondsPerKm, description } = sessionPaceAndDescription(
         type,
@@ -127,7 +185,7 @@ export function buildTrainingPlan(profile: RunnerProfile, paces: PaceTargets): T
         week: weekNumber,
         session: index + 1,
         type,
-        distanceKm: distances[index],
+        distanceKm: distances[index] / 100,
         paceSecondsPerKm,
         description,
       };
@@ -135,10 +193,10 @@ export function buildTrainingPlan(profile: RunnerProfile, paces: PaceTargets): T
 
     weeks.push({
       week: weekNumber,
-      weeklyDistanceKm: roundKm(sessions.reduce((total, session) => total + session.distanceKm, 0)),
+      weeklyDistanceKm: distances.reduce((total, distance) => total + distance, 0) / 100,
       sessions,
     });
   }
 
-  return { weeks, warnings: buildWarnings(profile) };
+  return { weeks, warnings: buildWarnings(profile, weeks) };
 }
