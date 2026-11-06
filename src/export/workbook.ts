@@ -2,8 +2,13 @@ import * as XLSX from 'xlsx';
 import { getBmiTrainingGuidance } from '../domain/bmi';
 import { formatPace, PACE_RANGE_WARNING, type PaceTargets } from '../domain/paces';
 import type { RunnerProfile } from '../domain/profile';
-import { formatDuration } from '../domain/time';
-import type { QualityWorkoutType, TrainingPlan, WorkoutSession } from '../domain/trainingPlan';
+import type {
+  QualityWorkoutType,
+  TrainingPhase,
+  TrainingPlan,
+  WorkoutSession,
+} from '../domain/trainingPlan';
+import { formatCompleteWorkout } from '../domain/workoutText';
 
 function formatTime(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
@@ -20,6 +25,13 @@ const qualityNames: Record<QualityWorkoutType, string> = {
   progressive: 'Progressivo',
 };
 
+const phaseNames: Record<TrainingPhase, string> = {
+  base: 'Base',
+  development: 'Desenvolvimento',
+  specific: 'Específica',
+  taper: 'Polimento',
+};
+
 function formatWorkoutType(session: WorkoutSession): string {
   if (session.type === 'quality') {
     return session.qualityType ? `Qualidade · ${qualityNames[session.qualityType]}` : 'Qualidade';
@@ -28,19 +40,9 @@ function formatWorkoutType(session: WorkoutSession): string {
   return 'Leve';
 }
 
-function formatDistance(distanceKm: number): string {
-  return new Intl.NumberFormat('pt-BR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(distanceKm);
-}
-
-function formatEasyPhase(
-  durationSeconds: number,
-  distanceKm: number,
-  easyPaceSecondsPerKm: number,
-): string {
-  return `${formatDuration(durationSeconds)} leve a ${formatPace(easyPaceSecondsPerKm)} min/km (${formatDistance(distanceKm)} km)`;
+function formatDate(date: string): string {
+  const [year, month, day] = date.split('-');
+  return `${day}/${month}/${year}`;
 }
 
 export function createTrainingWorkbook(
@@ -49,19 +51,23 @@ export function createTrainingWorkbook(
   bmi: number,
   plan: TrainingPlan,
 ): XLSX.WorkBook {
-  const bmiGuidance = getBmiTrainingGuidance(bmi);
+  const bmiGuidance = profile.adultConfirmed ? getBmiTrainingGuidance(bmi) : null;
   const summaryRows: (string | number)[][] = [
     ['Campo', 'Valor'],
     ['Distância-alvo (km)', profile.targetDistanceKm],
     ['Tempo recente nos 5 km', formatTime(profile.fiveKmTimeSeconds)],
+    ['Tempo-alvo da prova', formatTime(profile.goalTimeSeconds)],
+    ['Data da prova', formatDate(profile.raceDate)],
+    ...(profile.adultConfirmed
+      ? [['Confirmação de maioridade', 'Sim'] as (string | number)[]]
+      : []),
     ['Peso (kg)', profile.weightKg],
     ['Altura (cm)', profile.heightCm],
     ['IMC informativo', bmi],
     ...(bmiGuidance ? [['Aviso sobre IMC', bmiGuidance] as (string | number)[]] : []),
     ['Km corridos por semana', profile.currentWeeklyKm],
     ['Sessões por semana', profile.sessionsPerWeek],
-    ['Semanas até a prova', profile.weeksAvailable],
-    ['Preferência de carga', profile.preference === 'light' ? 'Mais leve' : 'Mais agressiva'],
+    ['Duração do ciclo (semanas)', plan.weeks.length],
     ['Ritmo leve', `${formatPace(paces.easySecondsPerKm)} min/km`],
     ['Ritmo de limiar', `${formatPace(paces.thresholdSecondsPerKm)} min/km`],
     ['Ritmo de tiro', `${formatPace(paces.intervalSecondsPerKm)} min/km`],
@@ -76,10 +82,9 @@ export function createTrainingWorkbook(
       'Tipo de treino',
       'Distância (km)',
       'Ritmo-alvo (min/km)',
-      'Orientação',
-      'Aquecimento',
-      'Parte principal (km)',
-      'Desaquecimento',
+      'Período',
+      'Fase',
+      'Treino completo',
     ],
     ...plan.weeks.flatMap((week) =>
       week.sessions.map((session) => [
@@ -88,20 +93,12 @@ export function createTrainingWorkbook(
         formatWorkoutType(session),
         session.distanceKm,
         `${formatPace(session.paceSecondsPerKm)} min/km`,
-        session.description,
-        formatEasyPhase(
-          session.warmupDurationSeconds,
-          session.warmupDistanceKm,
-          paces.easySecondsPerKm,
-        ),
-        session.mainDistanceKm,
-        formatEasyPhase(
-          session.cooldownDurationSeconds,
-          session.cooldownDistanceKm,
-          paces.easySecondsPerKm,
-        ),
+        `${formatDate(week.startDate)} – ${formatDate(week.endDate)}`,
+        phaseNames[week.phase],
+        formatCompleteWorkout(session),
       ]),
     ),
+    ['', 'Prova', '', '', '', `Data da prova: ${profile.raceDate}`, '', 'Evento da prova'],
   ];
 
   const summary = XLSX.utils.aoa_to_sheet(summaryRows);
@@ -111,8 +108,6 @@ export function createTrainingWorkbook(
   for (let row = 2; row <= calendarRows.length; row += 1) {
     const distanceCell = calendar[`D${row}`];
     if (distanceCell) distanceCell.z = '0.00';
-    const mainDistanceCell = calendar[`H${row}`];
-    if (mainDistanceCell) mainDistanceCell.z = '0.00';
   }
   calendar['!cols'] = [
     { wch: 10 },
@@ -120,10 +115,9 @@ export function createTrainingWorkbook(
     { wch: 18 },
     { wch: 17 },
     { wch: 23 },
-    { wch: 58 },
-    { wch: 42 },
+    { wch: 25 },
     { wch: 20 },
-    { wch: 42 },
+    { wch: 90 },
   ];
 
   const workbook = XLSX.utils.book_new();

@@ -1,156 +1,127 @@
 import * as XLSX from 'xlsx';
 import { describe, expect, it, vi } from 'vitest';
 import { getBmiTrainingGuidance } from '../domain/bmi';
-import { calculatePaces } from '../domain/paces';
+import { calculatePaces, PACE_RANGE_WARNING } from '../domain/paces';
 import type { RunnerProfile } from '../domain/profile';
 import { buildTrainingPlan } from '../domain/trainingPlan';
+import { formatCompleteWorkout } from '../domain/workoutText';
 import { createTrainingWorkbook, downloadTrainingWorkbook } from './workbook';
 
+const today = new Date(2026, 0, 5);
 const profile: RunnerProfile = {
   targetDistanceKm: 10,
   fiveKmTimeSeconds: 1350,
+  goalTimeSeconds: 50 * 60,
   weightKg: 70,
   heightCm: 175,
   currentWeeklyKm: 30,
   sessionsPerWeek: 4,
-  weeksAvailable: 8,
-  preference: 'light',
+  raceDate: '2026-03-01',
+  adultConfirmed: true,
 };
 
 const paces = calculatePaces(profile.fiveKmTimeSeconds);
-const plan = buildTrainingPlan(profile, paces);
+const plan = buildTrainingPlan(profile, paces, today);
+
+function reopenWorkbook(
+  runnerProfile: RunnerProfile = profile,
+  runnerPaces = calculatePaces(runnerProfile.fiveKmTimeSeconds),
+  runnerPlan = buildTrainingPlan(runnerProfile, runnerPaces, today),
+  bmi = 22.9,
+) {
+  const workbook = createTrainingWorkbook(runnerProfile, runnerPaces, bmi, runnerPlan);
+  const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+  return XLSX.read(bytes, { type: 'array', cellNF: true });
+}
+
+function rowsFor(workbook: XLSX.WorkBook, sheetName: string) {
+  return XLSX.utils.sheet_to_json<(string | number)[]>(workbook.Sheets[sheetName], {
+    header: 1,
+  });
+}
 
 describe('createTrainingWorkbook', () => {
-  it('creates summary and weekly-plan sheets with the runner data', () => {
-    const workbook = createTrainingWorkbook(profile, paces, 22.9, plan);
+  it('exports goal and event details, cycle length, paces, BMI, alerts, and selected adult confirmation', () => {
+    const clampedProfile = { ...profile, fiveKmTimeSeconds: 2700 };
+    const clampedPaces = calculatePaces(clampedProfile.fiveKmTimeSeconds);
+    const clampedPlan = buildTrainingPlan(clampedProfile, clampedPaces, today);
+    const reopened = reopenWorkbook(clampedProfile, clampedPaces, clampedPlan, 30);
+    const summaryRows = rowsFor(reopened, 'Resumo');
 
-    expect(workbook.SheetNames).toEqual(['Resumo', 'Plano semanal']);
-    const summaryRows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Resumo, {
-      header: 1,
-    });
-    const planRows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets['Plano semanal'], {
-      header: 1,
-    });
-
+    expect(reopened.SheetNames).toEqual(['Resumo', 'Plano semanal']);
     expect(summaryRows).toContainEqual(['Distância-alvo (km)', 10]);
-    expect(summaryRows).toContainEqual(['IMC informativo', 22.9]);
-    expect(summaryRows).toContainEqual(['Ritmo leve', '6:00 min/km']);
-    expect(summaryRows).toContainEqual(['Ritmo de limiar', '4:45 min/km']);
-    expect(summaryRows).toContainEqual(['Ritmo de tiro', '4:25 min/km']);
-    expect(planRows).toHaveLength(1 + 8 * 4);
-    expect(planRows.find((row) => row[2] === 'Leve')).toContain('6:00 min/km');
-    expect(planRows.some((row) => row[0] === 8)).toBe(true);
+    expect(summaryRows).toContainEqual(['Tempo recente nos 5 km', '00:45:00']);
+    expect(summaryRows).toContainEqual(['Tempo-alvo da prova', '00:50:00']);
+    expect(summaryRows).toContainEqual(['Data da prova', '01/03/2026']);
+    expect(summaryRows).toContainEqual(['Duração do ciclo (semanas)', clampedPlan.weeks.length]);
+    expect(summaryRows).toContainEqual(['IMC informativo', 30]);
+    expect(summaryRows).toContainEqual(['Confirmação de maioridade', 'Sim']);
+    expect(summaryRows).toContainEqual(['Ritmo leve', '6:40 min/km']);
+    expect(summaryRows).toContainEqual(['Ritmo de limiar', '5:15 min/km']);
+    expect(summaryRows).toContainEqual(['Ritmo de tiro', '4:50 min/km']);
+    expect(summaryRows).toContainEqual(['Aviso sobre IMC', getBmiTrainingGuidance(30)]);
+    expect(summaryRows).toContainEqual(['Aviso', PACE_RANGE_WARNING]);
+    for (const warning of clampedPlan.warnings) {
+      expect(summaryRows).toContainEqual(['Aviso', warning]);
+    }
+    expect(summaryRows.some((row) => row[0] === 'Preferência de carga')).toBe(false);
   });
 
-  it('exports BMI guidance in the summary at BMI 30', () => {
-    const guidance = getBmiTrainingGuidance(30);
-    const workbook = createTrainingWorkbook(profile, paces, 30, plan);
-    const summaryRows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Resumo, {
-      header: 1,
-    });
+  it('omits adult-only BMI guidance and confirmation when adult confirmation is not selected', () => {
+    const unconfirmedProfile = { ...profile, adultConfirmed: false };
+    const reopened = reopenWorkbook(unconfirmedProfile, paces, plan, 30);
+    const summaryRows = rowsFor(reopened, 'Resumo');
 
-    expect(summaryRows).toContainEqual(['Aviso sobre IMC', guidance]);
-  });
-
-  it('omits BMI guidance from the summary below BMI 30', () => {
-    const workbook = createTrainingWorkbook(profile, paces, 29.9, plan);
-    const summaryRows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Resumo, {
-      header: 1,
-    });
-
+    expect(summaryRows).toContainEqual(['IMC informativo', 30]);
     expect(summaryRows.some((row) => row[0] === 'Aviso sobre IMC')).toBe(false);
+    expect(summaryRows.some((row) => row[0] === 'Confirmação de maioridade')).toBe(false);
+  });
+
+  it('exports dated training weeks, phase, complete workouts, and a separate race event without a training session', () => {
+    const reopened = reopenWorkbook();
+    const summaryRows = rowsFor(reopened, 'Resumo');
+    const rows = rowsFor(reopened, 'Plano semanal');
+    const headers = rows[0];
+    const sheet = reopened.Sheets['Plano semanal'];
+    const trainingRows = rows.filter(
+      (row) => typeof row[1] === 'string' && row[1].startsWith('Treino '),
+    );
+    const eventRow = rows.find((row) => row[1] === 'Prova');
+    const firstWeek = plan.weeks[0];
+    const qualitySession = firstWeek.sessions.find((session) => session.type === 'quality');
+    const qualityRow = trainingRows.find(
+      (row) => row[0] === firstWeek.week && row[1] === `Treino ${qualitySession?.session}`,
+    );
+
+    expect(summaryRows).toContainEqual(['Data da prova', '01/03/2026']);
+    expect(headers).toContain('Período');
+    expect(headers).toContain('Fase');
+    expect(headers).toContain('Treino completo');
+    expect(headers).not.toContain('Aquecimento');
+    expect(headers).not.toContain('Parte principal (km)');
+    expect(headers).not.toContain('Desaquecimento');
+    expect(rows[1]).toContain('05/01/2026 – 11/01/2026');
+    expect(rows[1]).toContain('Base');
+    expect(qualityRow?.[headers.indexOf('Treino completo')]).toBe(
+      formatCompleteWorkout(qualitySession!),
+    );
+    expect(eventRow?.[5]).toBe(`Data da prova: ${profile.raceDate}`);
+    expect(eventRow?.[2]).toBe('');
+    expect(eventRow?.[3]).toBe('');
+    expect(trainingRows).toHaveLength(plan.weeks.reduce((count, week) => count + week.sessions.length, 0));
+    expect(eventRow).toBeDefined();
+    expect(sheet.D2?.v).toBe(plan.weeks[0].sessions[0].distanceKm);
+    expect(sheet.D2?.z).toBe('0.00');
   });
 
   it('preserves sheet names and representative cells after XLSX round-trip', () => {
-    const workbook = createTrainingWorkbook(profile, paces, 22.9, plan);
-    const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-    const reopened = XLSX.read(bytes, { type: 'array' });
-    const summaryRows = XLSX.utils.sheet_to_json<unknown[]>(reopened.Sheets.Resumo, {
-      header: 1,
-    });
+    const reopened = reopenWorkbook();
+    const summaryRows = rowsFor(reopened, 'Resumo');
 
     expect(reopened.SheetNames).toEqual(['Resumo', 'Plano semanal']);
     expect(summaryRows).toContainEqual(['Distância-alvo (km)', 10]);
     expect(summaryRows).toContainEqual(['IMC informativo', 22.9]);
   });
-
-  it('exports the pace-range warning in the summary after XLSX round-trip', () => {
-    const clampedProfile = { ...profile, fiveKmTimeSeconds: 2700 };
-    const clampedPaces = calculatePaces(clampedProfile.fiveKmTimeSeconds);
-    const clampedPlan = buildTrainingPlan(clampedProfile, clampedPaces);
-    const workbook = createTrainingWorkbook(clampedProfile, clampedPaces, 22.9, clampedPlan);
-    const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-    const reopened = XLSX.read(bytes, { type: 'array' });
-    const summaryRows = XLSX.utils.sheet_to_json<unknown[]>(reopened.Sheets.Resumo, {
-      header: 1,
-    });
-
-    expect(summaryRows).toContainEqual([
-      'Aviso',
-      'Seus ritmos foram limitados à faixa de referência de 20:00 a 25:00 nos 5 km e podem não refletir seu esforço; ajuste pelo conforto.',
-    ]);
-  });
-
-  it('preserves two-decimal session distances as formatted numeric cells', () => {
-    const lowBaseProfile = {
-      ...profile,
-      currentWeeklyKm: 1,
-      sessionsPerWeek: 1,
-      weeksAvailable: 4,
-    };
-    const lowBasePlan = buildTrainingPlan(lowBaseProfile, paces);
-    const workbook = createTrainingWorkbook(lowBaseProfile, paces, 22.9, lowBasePlan);
-    const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-    const reopened = XLSX.read(bytes, { type: 'array', cellNF: true });
-    const weekTwoDistance = reopened.Sheets['Plano semanal']['D3'];
-
-    expect(weekTwoDistance?.v).toBe(1.05);
-    expect(weekTwoDistance?.z).toBe('0.00');
-  });
-
-  it('preserves workout phases, quality details, and numeric totals after XLSX round-trip', () => {
-    const workbook = createTrainingWorkbook(profile, paces, 22.9, plan);
-    const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-    const reopened = XLSX.read(bytes, { type: 'array', cellNF: true });
-    const sheet = reopened.Sheets['Plano semanal'];
-    const rows = XLSX.utils.sheet_to_json<(string | number)[]>(sheet, { header: 1 });
-    const headers = rows[0];
-    const qualityRow = rows.find((row) => row[0] === 1 && row[1] === 'Treino 1');
-
-    expect(headers).toContain('Aquecimento');
-    expect(headers).toContain('Parte principal (km)');
-    expect(headers).toContain('Desaquecimento');
-    expect(qualityRow?.[2]).toBe('Qualidade · Limiar');
-    expect(qualityRow?.[headers.indexOf('Aquecimento')]).toContain('09:58');
-    expect(qualityRow?.[headers.indexOf('Aquecimento')]).toContain('6:00 min/km');
-    expect(qualityRow?.[headers.indexOf('Parte principal (km)')]).toBe(3.51);
-    expect(qualityRow?.[headers.indexOf('Desaquecimento')]).toContain('04:59');
-    expect(qualityRow?.[headers.indexOf('Orientação')]).toContain('Limiar:');
-    expect(sheet.D2?.v).toBe(6);
-    expect(sheet.D2?.z).toBe('0.00');
-    expect(rows.find((row) => row[0] === 1 && row[1] === 'Treino 2')?.[2]).toBe('Leve');
-  });
-
-  it('exports the quality fallback warning in the summary after XLSX round-trip', () => {
-    const lowQualityProfile = { ...profile, currentWeeklyKm: 10 };
-    const lowQualityPlan = buildTrainingPlan(lowQualityProfile, paces);
-    const workbook = createTrainingWorkbook(lowQualityProfile, paces, 22.9, lowQualityPlan);
-    const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-    const reopened = XLSX.read(bytes, { type: 'array' });
-    const summaryRows = XLSX.utils.sheet_to_json<(string | number)[]>(reopened.Sheets.Resumo, {
-      header: 1,
-    });
-
-    expect(
-      summaryRows.some(
-        (row) =>
-          row[0] === 'Aviso' &&
-          typeof row[1] === 'string' &&
-          row[1].includes('adaptada para corrida leve'),
-      ),
-    ).toBe(true);
-  });
-
 });
 
 describe('downloadTrainingWorkbook', () => {
