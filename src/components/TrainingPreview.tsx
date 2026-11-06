@@ -1,0 +1,116 @@
+import { formatPace, type PaceTargets } from '../domain/paces';
+import type { RunnerProfile } from '../domain/profile';
+import type { TrainingPlan } from '../domain/trainingPlan';
+
+interface TrainingPreviewProps {
+  profile: RunnerProfile;
+  paces: PaceTargets;
+  bmi: number;
+  plan: TrainingPlan;
+}
+
+const targetNames: Record<RunnerProfile['targetDistanceKm'], string> = {
+  3: '3 km',
+  5: '5 km',
+  10: '10 km',
+  21.1: 'meia maratona (21,1 km)',
+  42.2: 'maratona (42,2 km)',
+};
+
+function formatDistance(distanceKm: number): string {
+  return new Intl.NumberFormat('pt-BR', {
+    maximumFractionDigits: 1,
+  }).format(distanceKm);
+}
+
+export default function TrainingPreview({ profile, paces, bmi, plan }: TrainingPreviewProps) {
+  const formattedBmi = new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(bmi);
+
+  return (
+    <section className="preview-card" aria-labelledby="plan-title" aria-live="polite">
+      <div className="section-heading">
+        <p className="eyebrow">SEU CICLO DE TREINO</p>
+        <h2 id="plan-title">Plano semanal</h2>
+        <p>
+          {targetNames[profile.targetDistanceKm]} · {plan.weeks.length} semanas ·{' '}
+          {profile.sessionsPerWeek} sessões por semana
+        </p>
+      </div>
+
+      {paces.clamped && (
+        <p className="notice" role="status">
+          Seus ritmos foram limitados à faixa de referência de 20:00 a 25:00 nos 5 km.
+        </p>
+      )}
+      {plan.warnings.map((warning) => (
+        <p className="notice" key={warning} role="status">
+          {warning}
+        </p>
+      ))}
+
+      <div className="pace-grid" aria-label="Ritmos de treino">
+        <article className="pace-card pace-easy">
+          <span>LEVE</span>
+          <strong>Ritmo leve: {formatPace(paces.easySecondsPerKm)} min/km</strong>
+        </article>
+        <article className="pace-card pace-threshold">
+          <span>LIMIAR</span>
+          <strong>Ritmo de limiar: {formatPace(paces.thresholdSecondsPerKm)} min/km</strong>
+        </article>
+        <article className="pace-card pace-interval">
+          <span>TIRO</span>
+          <strong>Ritmo de tiro: {formatPace(paces.intervalSecondsPerKm)} min/km</strong>
+        </article>
+      </div>
+
+      <p className="bmi-note preview-bmi">
+        IMC informativo: <strong>{formattedBmi}</strong>
+        <span> O IMC não é usado para definir carga ou ritmo.</span>
+      </p>
+
+      <div className="table-scroll">
+        <table>
+          <caption>Treinos por semana</caption>
+          <thead>
+            <tr>
+              <th scope="col">Semana</th>
+              <th scope="col">Sessão</th>
+              <th scope="col">Distância</th>
+              <th scope="col">Ritmo-alvo</th>
+              <th scope="col">Orientação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {plan.weeks.flatMap((week) =>
+              week.sessions.map((session) => (
+                <tr key={`${session.week}-${session.session}`}>
+                  <th scope="row">Semana {week.week}</th>
+                  <td>
+                    Treino {session.session} ·{' '}
+                    {session.type === 'quality'
+                      ? 'Qualidade'
+                      : session.type === 'long'
+                        ? 'Longo'
+                        : 'Leve'}
+                  </td>
+                  <td>{formatDistance(session.distanceKm)} km</td>
+                  <td>{formatPace(session.paceSecondsPerKm)} min/km</td>
+                  <td>{session.description}</td>
+                </tr>
+              )),
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="disclaimer">
+        Os ritmos são estimativas baseadas na sua marca de 5 km. Ajuste o esforço ao seu conforto;
+        reduza ou interrompa o treino diante de dor ou fadiga persistente e procure orientação
+        apropriada.
+      </p>
+    </section>
+  );
+}

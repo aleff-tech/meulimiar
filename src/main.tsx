@@ -1,5 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import App from './App';
+import './styles.css';
 
 const rootElement = document.getElementById('root');
 
@@ -9,8 +11,6 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <main>
-      <h1>Gerador de planilhas de corrida</h1>
-    </main>
+    <App />
   </StrictMode>,
 );
