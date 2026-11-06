@@ -3,11 +3,27 @@ import type { RunnerProfile, TargetDistanceKm } from './profile';
 
 export type QualityWorkoutType = 'threshold' | 'interval' | 'fartlek' | 'progressive';
 
+export type WorkoutSegmentPhase =
+  | 'warmup'
+  | 'easy'
+  | 'work'
+  | 'recovery'
+  | 'moderate'
+  | 'cooldown';
+
+export interface WorkoutSegment {
+  phase: WorkoutSegmentPhase;
+  distanceKm: number;
+  paceSecondsPerKm: number;
+  label: string;
+}
+
 export interface WorkoutSession {
   week: number;
   session: number;
   type: 'easy' | 'quality' | 'long';
   qualityType?: QualityWorkoutType;
+  segments: WorkoutSegment[];
   distanceKm: number;
   paceSecondsPerKm: number;
   description: string;
@@ -150,6 +166,20 @@ function formatDistance(hundredths: number): string {
   return `${(hundredths / 100).toFixed(2)} km`;
 }
 
+function makeSegment(
+  phase: WorkoutSegmentPhase,
+  distanceHundredths: number,
+  paceSecondsPerKm: number,
+  description: string,
+): WorkoutSegment {
+  return {
+    phase,
+    distanceKm: distanceHundredths / 100,
+    paceSecondsPerKm,
+    label: `${description}: ${formatDistance(distanceHundredths)} a ${formatPace(paceSecondsPerKm)} min/km`,
+  };
+}
+
 interface RepeatOption {
   label: string;
   distanceHundredths: number;
@@ -204,11 +234,44 @@ function fitRepeatSet(
   return best;
 }
 
-function qualityDescription(
+function repeatedWorkSegments(
+  set: RepeatSet,
+  workPaceSecondsPerKm: number,
+  recoveryPaceSecondsPerKm: number,
+  workDescription: string,
+): WorkoutSegment[] {
+  const segments: WorkoutSegment[] = [];
+
+  for (let repetition = 0; repetition < set.repetitions; repetition += 1) {
+    segments.push(
+      makeSegment('work', set.work.distanceHundredths, workPaceSecondsPerKm, workDescription),
+    );
+    if (repetition < set.recoveryCount) {
+      segments.push(
+        makeSegment(
+          'recovery',
+          set.recovery.distanceHundredths,
+          recoveryPaceSecondsPerKm,
+          'Recuperação leve',
+        ),
+      );
+    }
+  }
+
+  if (set.remainingHundredths > 0) {
+    segments.push(
+      makeSegment('easy', set.remainingHundredths, recoveryPaceSecondsPerKm, 'Leve extra'),
+    );
+  }
+
+  return segments;
+}
+
+function qualityPrescription(
   qualityType: QualityWorkoutType,
   mainHundredths: number,
   paces: PaceTargets,
-): string {
+): { description: string; segments: WorkoutSegment[] } {
   const mainDistance = formatDistance(mainHundredths);
   const thresholdPace = `${formatPace(paces.thresholdSecondsPerKm)} min/km`;
   const intervalPace = `${formatPace(paces.intervalSecondsPerKm)} min/km`;
@@ -239,7 +302,15 @@ function qualityDescription(
         ? `${formatDistance(set.remainingHundredths)} leve para completar ${mainDistance}`
         : undefined;
 
-    return `Limiar: ${[work, recoveries, remaining].filter(Boolean).join('; ')} na parte principal.`;
+    return {
+      description: `Limiar: ${[work, recoveries, remaining].filter(Boolean).join('; ')} na parte principal.`,
+      segments: repeatedWorkSegments(
+        set,
+        paces.thresholdSecondsPerKm,
+        paces.easySecondsPerKm,
+        'Limiar',
+      ),
+    };
   }
   if (qualityType === 'interval') {
     const set = fitRepeatSet(
@@ -263,7 +334,15 @@ function qualityDescription(
         ? `${formatDistance(set.remainingHundredths)} leve para completar ${mainDistance}`
         : undefined;
 
-    return `Tiros/intervalado: ${[work, recoveries, remaining].filter(Boolean).join('; ')} na parte principal.`;
+    return {
+      description: `Tiros/intervalado: ${[work, recoveries, remaining].filter(Boolean).join('; ')} na parte principal.`,
+      segments: repeatedWorkSegments(
+        set,
+        paces.intervalSecondsPerKm,
+        paces.easySecondsPerKm,
+        'Tiro',
+      ),
+    };
   }
   if (qualityType === 'fartlek') {
     const fastHundredths = durationToHundredths(60, paces.intervalSecondsPerKm);
@@ -277,7 +356,23 @@ function qualityDescription(
         ? `${formatDistance(remainingHundredths)} leve extra`
         : undefined;
 
-    return `Fartlek: ${[cycleDescription, remaining].filter(Boolean).join('; ')} para completar ${mainDistance} na parte principal.`;
+    const segments: WorkoutSegment[] = [];
+    for (let cycle = 0; cycle < cycles; cycle += 1) {
+      segments.push(
+        makeSegment('work', fastHundredths, paces.intervalSecondsPerKm, 'Rápido'),
+        makeSegment('recovery', easyHundredths, paces.easySecondsPerKm, 'Recuperação leve'),
+      );
+    }
+    if (remainingHundredths > 0) {
+      segments.push(
+        makeSegment('easy', remainingHundredths, paces.easySecondsPerKm, 'Leve extra'),
+      );
+    }
+
+    return {
+      description: `Fartlek: ${[cycleDescription, remaining].filter(Boolean).join('; ')} para completar ${mainDistance} na parte principal.`,
+      segments,
+    };
   }
 
   const midpointPaceSecondsPerKm = Math.round(
@@ -287,7 +382,14 @@ function qualityDescription(
   const midpointHundredths = Math.floor(mainHundredths * 0.4 + 1e-8);
   const thresholdHundredths = mainHundredths - easyHundredths - midpointHundredths;
 
-  return `Progressivo: ${formatDistance(easyHundredths)} leve a ${easyPace}, ${formatDistance(midpointHundredths)} moderado a ${formatPace(midpointPaceSecondsPerKm)} min/km e ${formatDistance(thresholdHundredths)} em limiar a ${thresholdPace}.`;
+  return {
+    description: `Progressivo: ${formatDistance(easyHundredths)} leve a ${easyPace}, ${formatDistance(midpointHundredths)} moderado a ${formatPace(midpointPaceSecondsPerKm)} min/km e ${formatDistance(thresholdHundredths)} em limiar a ${thresholdPace}.`,
+    segments: [
+      makeSegment('easy', easyHundredths, paces.easySecondsPerKm, 'Leve'),
+      makeSegment('moderate', midpointHundredths, midpointPaceSecondsPerKm, 'Moderado'),
+      makeSegment('work', thresholdHundredths, paces.thresholdSecondsPerKm, 'Limiar'),
+    ],
+  };
 }
 
 function sessionPaceAndDescription(
@@ -295,27 +397,44 @@ function sessionPaceAndDescription(
   qualityType: QualityWorkoutType | undefined,
   mainHundredths: number,
   paces: PaceTargets,
-): { paceSecondsPerKm: number; description: string } {
+): { paceSecondsPerKm: number; description: string; mainSegments: WorkoutSegment[] } {
   if (type === 'easy') {
     return {
       paceSecondsPerKm: paces.easySecondsPerKm,
       description: 'Corrida leve para acumular volume com conforto.',
+      mainSegments: [makeSegment('easy', mainHundredths, paces.easySecondsPerKm, 'Leve')],
     };
   }
   if (type === 'long') {
     return {
       paceSecondsPerKm: paces.easySecondsPerKm,
       description: 'Corrida longa em ritmo leve, sem forçar.',
+      mainSegments: [makeSegment('easy', mainHundredths, paces.easySecondsPerKm, 'Leve contínuo')],
     };
   }
   if (!qualityType) {
     throw new Error('Uma sessão de qualidade precisa de um subtipo.');
   }
 
+  const prescription = qualityPrescription(qualityType, mainHundredths, paces);
   return {
     paceSecondsPerKm: qualityPaceSecondsPerKm(qualityType, paces),
-    description: qualityDescription(qualityType, mainHundredths, paces),
+    description: prescription.description,
+    mainSegments: prescription.segments,
   };
+}
+
+function sessionSegments(
+  warmupHundredths: number,
+  mainSegments: WorkoutSegment[],
+  cooldownHundredths: number,
+  easyPaceSecondsPerKm: number,
+): WorkoutSegment[] {
+  return [
+    makeSegment('warmup', warmupHundredths, easyPaceSecondsPerKm, 'Aquecimento'),
+    ...mainSegments,
+    makeSegment('cooldown', cooldownHundredths, easyPaceSecondsPerKm, 'Desaquecimento'),
+  ];
 }
 
 function orderSessions(sessions: WorkoutSession[]): WorkoutSession[] {
@@ -420,7 +539,7 @@ export function buildTrainingPlan(profile: RunnerProfile, paces: PaceTargets): T
         const mainHundredths =
           distanceHundredths - fittedPhases.warmupHundredths - fittedPhases.cooldownHundredths;
         const qualityType = type === 'quality' ? allocatedQualityType : undefined;
-        const { paceSecondsPerKm, description } = sessionPaceAndDescription(
+        const { paceSecondsPerKm, description, mainSegments } = sessionPaceAndDescription(
           type,
           qualityType,
           mainHundredths,
@@ -432,6 +551,12 @@ export function buildTrainingPlan(profile: RunnerProfile, paces: PaceTargets): T
           session: 0,
           type,
           qualityType,
+          segments: sessionSegments(
+            fittedPhases.warmupHundredths,
+            mainSegments,
+            fittedPhases.cooldownHundredths,
+            paces.easySecondsPerKm,
+          ),
           distanceKm: distanceHundredths / 100,
           paceSecondsPerKm,
           description,

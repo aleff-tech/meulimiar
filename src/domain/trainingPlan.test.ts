@@ -93,6 +93,26 @@ describe('buildTrainingPlan', () => {
     expect(plan.weeks[0].sessions.map((session) => session.type)).toEqual(['easy', 'long']);
   });
 
+  it('provides ordered easy segments for easy and long sessions', () => {
+    const plan = buildTrainingPlan({ ...baseProfile, sessionsPerWeek: 2 }, paces);
+
+    for (const session of plan.weeks[0].sessions) {
+      expect(session.segments.map((segment) => segment.phase)).toEqual([
+        'warmup',
+        'easy',
+        'cooldown',
+      ]);
+      expect(
+        session.segments.every((segment) => segment.paceSecondsPerKm === paces.easySecondsPerKm),
+      ).toBe(true);
+      expect(
+        Math.round(
+          session.segments.reduce((total, segment) => total + segment.distanceKm, 0) * 100,
+        ),
+      ).toBe(Math.round(session.distanceKm * 100));
+    }
+  });
+
   it('rotates quality subtypes through an 8-week plan including recovery and taper weeks', () => {
     const plan = buildTrainingPlan(
       { ...baseProfile, currentWeeklyKm: 30, weeksAvailable: 8 },
@@ -196,6 +216,16 @@ describe('buildTrainingPlan', () => {
     expect(session.type).toBe('easy');
     expect(session.qualityType).toBeUndefined();
     expect(session.distanceKm).toBe(2);
+    expect(session.segments.map((segment) => segment.phase)).toEqual([
+      'warmup',
+      'easy',
+      'cooldown',
+    ]);
+    expect(
+      Math.round(
+        session.segments.reduce((total, segment) => total + segment.distanceKm, 0) * 100,
+      ),
+    ).toBe(Math.round(session.distanceKm * 100));
     expect(plan.warnings.some((warning) => /qualidade.*leve/i.test(warning))).toBe(true);
   });
 
@@ -234,6 +264,33 @@ describe('buildTrainingPlan', () => {
     );
   });
 
+  it('creates ordered threshold work, recovery, and easy remainder segments', () => {
+    const plan = buildTrainingPlan(baseProfile, paces);
+    const threshold = plan.weeks[0].sessions[0];
+
+    expect(threshold.segments.map((segment) => segment.phase)).toEqual([
+      'warmup',
+      'work',
+      'recovery',
+      'work',
+      'easy',
+      'cooldown',
+    ]);
+    expect(threshold.segments.slice(1, 5).map((segment) => segment.distanceKm)).toEqual([
+      0.63,
+      0.16,
+      0.63,
+      0.09,
+    ]);
+    expect(threshold.segments[1].paceSecondsPerKm).toBe(paces.thresholdSecondsPerKm);
+    expect(threshold.segments[2].paceSecondsPerKm).toBe(paces.easySecondsPerKm);
+    expect(
+      Math.round(
+        threshold.segments.reduce((total, segment) => total + segment.distanceKm, 0) * 100,
+      ),
+    ).toBe(Math.round(threshold.distanceKm * 100));
+  });
+
   it('fits concrete interval repetitions and recoveries to the allocated main distance', () => {
     const plan = buildTrainingPlan(
       { ...baseProfile, currentWeeklyKm: 30, weeksAvailable: 8 },
@@ -249,6 +306,54 @@ describe('buildTrainingPlan', () => {
     expect(Math.round((8 * 0.3 + 7 * 0.2 + 0.01) * 100)).toBe(
       Math.round(intervals.mainDistanceKm * 100),
     );
+  });
+
+  it('creates each interval repetition and recovery plus the short easy remainder', () => {
+    const plan = buildTrainingPlan(
+      { ...baseProfile, currentWeeklyKm: 30, weeksAvailable: 8 },
+      paces,
+    );
+    const intervals = plan.weeks[1].sessions[0];
+    const repeatedSegments = intervals.segments.slice(1, -2);
+
+    expect(repeatedSegments.map((segment) => segment.phase)).toEqual([
+      'work',
+      'recovery',
+      'work',
+      'recovery',
+      'work',
+      'recovery',
+      'work',
+      'recovery',
+      'work',
+      'recovery',
+      'work',
+      'recovery',
+      'work',
+      'recovery',
+      'work',
+    ]);
+    expect(repeatedSegments.filter((segment) => segment.phase === 'work')).toHaveLength(8);
+    expect(repeatedSegments.filter((segment) => segment.phase === 'recovery')).toHaveLength(7);
+    expect(
+      repeatedSegments
+        .filter((segment) => segment.phase === 'work')
+        .map((segment) => segment.distanceKm),
+    ).toEqual([0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]);
+    expect(
+      repeatedSegments
+        .filter((segment) => segment.phase === 'recovery')
+        .map((segment) => segment.distanceKm),
+    ).toEqual([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]);
+    expect(intervals.segments[1].paceSecondsPerKm).toBe(paces.intervalSecondsPerKm);
+    expect(intervals.segments[2].paceSecondsPerKm).toBe(paces.easySecondsPerKm);
+    expect(intervals.segments[intervals.segments.length - 2]?.phase).toBe('easy');
+    expect(intervals.segments[intervals.segments.length - 2]?.distanceKm).toBe(0.01);
+    expect(
+      Math.round(
+        intervals.segments.reduce((total, segment) => total + segment.distanceKm, 0) * 100,
+      ),
+    ).toBe(Math.round(intervals.distanceKm * 100));
   });
 
   it('fits complete one-minute fartlek cycles and easy running to the allocated main distance', () => {
@@ -267,6 +372,32 @@ describe('buildTrainingPlan', () => {
     );
   });
 
+  it('creates separate fartlek work and recovery cycles and easy remainder segments', () => {
+    const plan = buildTrainingPlan(
+      { ...baseProfile, currentWeeklyKm: 30, weeksAvailable: 8 },
+      paces,
+    );
+    const fartlek = plan.weeks[2].sessions[0];
+    const repeatedSegments = fartlek.segments.slice(1, -2);
+
+    expect(repeatedSegments).toHaveLength(20);
+    expect(repeatedSegments[0].phase).toBe('work');
+    expect(repeatedSegments[1].phase).toBe('recovery');
+    expect(repeatedSegments.filter((segment) => segment.phase === 'work')).toHaveLength(10);
+    expect(repeatedSegments.filter((segment) => segment.phase === 'recovery')).toHaveLength(10);
+    expect(repeatedSegments[0].distanceKm).toBe(0.22);
+    expect(repeatedSegments[1].distanceKm).toBe(0.16);
+    expect(repeatedSegments[0].paceSecondsPerKm).toBe(paces.intervalSecondsPerKm);
+    expect(repeatedSegments[1].paceSecondsPerKm).toBe(paces.easySecondsPerKm);
+    expect(fartlek.segments[fartlek.segments.length - 2]?.phase).toBe('easy');
+    expect(fartlek.segments[fartlek.segments.length - 2]?.distanceKm).toBe(0.32);
+    expect(
+      Math.round(
+        fartlek.segments.reduce((total, segment) => total + segment.distanceKm, 0) * 100,
+      ),
+    ).toBe(Math.round(fartlek.distanceKm * 100));
+  });
+
   it('uses the rounded easy-threshold midpoint only for the progressive middle segment', () => {
     const plan = buildTrainingPlan(
       { ...baseProfile, currentWeeklyKm: 30, weeksAvailable: 8 },
@@ -274,7 +405,32 @@ describe('buildTrainingPlan', () => {
     );
     const progressive = plan.weeks[3].sessions.find((session) => session.type === 'quality');
 
-    expect(progressive?.description).toContain('5:23 min/km');
+    expect(progressive).toBeDefined();
+    if (!progressive) return;
+
+    expect(progressive.description).toContain('5:23 min/km');
+    expect(progressive.segments.map((segment) => segment.phase)).toEqual([
+      'warmup',
+      'easy',
+      'moderate',
+      'work',
+      'cooldown',
+    ]);
+    expect(progressive.segments.slice(1, 4).map((segment) => segment.distanceKm)).toEqual([
+      1.12,
+      1.12,
+      0.56,
+    ]);
+    expect(progressive.segments.slice(1, 4).map((segment) => segment.paceSecondsPerKm)).toEqual([
+      paces.easySecondsPerKm,
+      323,
+      paces.thresholdSecondsPerKm,
+    ]);
+    expect(
+      Math.round(
+        progressive.segments.reduce((total, segment) => total + segment.distanceKm, 0) * 100,
+      ),
+    ).toBe(Math.round(progressive.distanceKm * 100));
   });
 
   it('keeps one- and two-session plans quality-free while adding phases to every feasible session', () => {
