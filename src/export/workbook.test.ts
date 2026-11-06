@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { describe, expect, it, vi } from 'vitest';
+import { getBmiTrainingGuidance } from '../domain/bmi';
 import { calculatePaces } from '../domain/paces';
 import type { RunnerProfile } from '../domain/profile';
 import { buildTrainingPlan } from '../domain/trainingPlan';
@@ -39,6 +40,25 @@ describe('createTrainingWorkbook', () => {
     expect(planRows).toHaveLength(1 + 8 * 4);
     expect(planRows.find((row) => row[2] === 'Leve')).toContain('6:00 min/km');
     expect(planRows.some((row) => row[0] === 8)).toBe(true);
+  });
+
+  it('exports BMI guidance in the summary at BMI 30', () => {
+    const guidance = getBmiTrainingGuidance(30);
+    const workbook = createTrainingWorkbook(profile, paces, 30, plan);
+    const summaryRows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Resumo, {
+      header: 1,
+    });
+
+    expect(summaryRows).toContainEqual(['Aviso sobre IMC', guidance]);
+  });
+
+  it('omits BMI guidance from the summary below BMI 30', () => {
+    const workbook = createTrainingWorkbook(profile, paces, 29.9, plan);
+    const summaryRows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets.Resumo, {
+      header: 1,
+    });
+
+    expect(summaryRows.some((row) => row[0] === 'Aviso sobre IMC')).toBe(false);
   });
 
   it('preserves sheet names and representative cells after XLSX round-trip', () => {

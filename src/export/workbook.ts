@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { getBmiTrainingGuidance } from '../domain/bmi';
 import { formatPace, PACE_RANGE_WARNING, type PaceTargets } from '../domain/paces';
 import type { RunnerProfile } from '../domain/profile';
 import { formatDuration } from '../domain/time';
@@ -48,6 +49,7 @@ export function createTrainingWorkbook(
   bmi: number,
   plan: TrainingPlan,
 ): XLSX.WorkBook {
+  const bmiGuidance = getBmiTrainingGuidance(bmi);
   const summaryRows: (string | number)[][] = [
     ['Campo', 'Valor'],
     ['Distância-alvo (km)', profile.targetDistanceKm],
@@ -55,6 +57,7 @@ export function createTrainingWorkbook(
     ['Peso (kg)', profile.weightKg],
     ['Altura (cm)', profile.heightCm],
     ['IMC informativo', bmi],
+    ...(bmiGuidance ? [['Aviso sobre IMC', bmiGuidance] as (string | number)[]] : []),
     ['Km corridos por semana', profile.currentWeeklyKm],
     ['Sessões por semana', profile.sessionsPerWeek],
     ['Semanas até a prova', profile.weeksAvailable],

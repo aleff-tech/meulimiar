@@ -62,6 +62,31 @@ describe('running plan form and preview', () => {
     expect(bmiValue.parentElement?.textContent).toContain('IMC informativo: 22,9');
   });
 
+  it('shows adult BMI guidance without changing paces or sessions', () => {
+    render(<App />);
+    fillValidForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
+
+    const getPaces = () => [
+      screen.getByText(/Ritmo leve:/).textContent,
+      screen.getByText(/Ritmo de limiar:/).textContent,
+      screen.getByText(/Ritmo de tiro:/).textContent,
+    ];
+    const initialPaces = getPaces();
+    const initialPlan = screen.getByRole('table', { name: 'Treinos por semana' }).textContent;
+
+    expect(screen.queryByText(/Em adultos, IMC igual ou acima de 30/)).toBeNull();
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Peso (kg)' }), {
+      target: { value: '100' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
+
+    expect(screen.getByText(/Em adultos, IMC igual ou acima de 30/)).toBeTruthy();
+    expect(getPaces()).toEqual(initialPaces);
+    expect(screen.getByRole('table', { name: 'Treinos por semana' }).textContent).toBe(initialPlan);
+  });
+
   it('does not generate a plan when required values are missing', () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));

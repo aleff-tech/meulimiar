@@ -1,3 +1,4 @@
+import { getBmiTrainingGuidance } from '../domain/bmi';
 import { formatPace, PACE_RANGE_WARNING, type PaceTargets } from '../domain/paces';
 import type { RunnerProfile } from '../domain/profile';
 import { formatDuration } from '../domain/time';
@@ -44,6 +45,7 @@ export default function TrainingPreview({ profile, paces, bmi, plan }: TrainingP
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   }).format(bmi);
+  const bmiGuidance = getBmiTrainingGuidance(bmi);
 
   return (
     <section className="preview-card" aria-labelledby="plan-title" aria-live="polite">
@@ -86,6 +88,11 @@ export default function TrainingPreview({ profile, paces, bmi, plan }: TrainingP
         IMC informativo: <strong>{formattedBmi}</strong>
         <span> O IMC não é usado para definir carga ou ritmo.</span>
       </p>
+      {bmiGuidance && (
+        <p className="notice" role="status">
+          {bmiGuidance}
+        </p>
+      )}
 
       <div className="table-scroll">
         <table>
