@@ -1,8 +1,17 @@
+import type { RunnerProfile, TargetDistanceKm } from './profile';
+
 export interface PaceTargets {
   easySecondsPerKm: number;
   thresholdSecondsPerKm: number;
   intervalSecondsPerKm: number;
   clamped: boolean;
+}
+
+export interface GoalAssessment {
+  goalRacePaceSecondsPerKm: number;
+  currentEquivalentRaceTimeSeconds: number;
+  ambitious: boolean;
+  prescribedRacePaceSecondsPerKm: number;
 }
 
 export const PACE_RANGE_WARNING =
@@ -97,6 +106,39 @@ export function calculatePaces(fiveKmTimeSeconds: number): PaceTargets {
   }
 
   return paceResult(last, true);
+}
+
+export function estimateRaceTimeSeconds(
+  fiveKmTimeSeconds: number,
+  targetDistanceKm: TargetDistanceKm,
+): number {
+  if (!Number.isFinite(fiveKmTimeSeconds) || fiveKmTimeSeconds <= 0) {
+    throw new RangeError('O tempo de 5 km deve ser um número positivo.');
+  }
+
+  return Math.round(fiveKmTimeSeconds * (targetDistanceKm / 5) ** 1.06);
+}
+
+export function assessRaceGoal(
+  profile: RunnerProfile,
+  paces: PaceTargets,
+): GoalAssessment {
+  const goalRacePaceSecondsPerKm =
+    profile.goalTimeSeconds / profile.targetDistanceKm;
+  const currentEquivalentRaceTimeSeconds = estimateRaceTimeSeconds(
+    profile.fiveKmTimeSeconds,
+    profile.targetDistanceKm,
+  );
+
+  return {
+    goalRacePaceSecondsPerKm,
+    currentEquivalentRaceTimeSeconds,
+    ambitious: profile.goalTimeSeconds <= currentEquivalentRaceTimeSeconds * 0.95,
+    prescribedRacePaceSecondsPerKm: Math.max(
+      goalRacePaceSecondsPerKm,
+      paces.intervalSecondsPerKm,
+    ),
+  };
 }
 
 export function formatPace(secondsPerKm: number): string {
