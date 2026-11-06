@@ -102,4 +102,14 @@ describe('running plan form and preview', () => {
 
     expect(screen.queryByRole('heading', { name: 'Plano semanal' })).toBeNull();
   });
+
+  it('offers the XLSX download only after generating a valid plan', () => {
+    render(<App />);
+    expect(screen.queryByRole('button', { name: 'Baixar planilha XLSX' })).toBeNull();
+
+    fillValidForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
+
+    expect(screen.getByRole('button', { name: 'Baixar planilha XLSX' })).toBeTruthy();
+  });
 });

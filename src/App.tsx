@@ -3,6 +3,7 @@ import { calculateBmi } from './domain/bmi';
 import { calculatePaces } from './domain/paces';
 import type { RunnerProfile } from './domain/profile';
 import { buildTrainingPlan, type TrainingPlan } from './domain/trainingPlan';
+import { createTrainingWorkbook, downloadTrainingWorkbook } from './export/workbook';
 import TrainingForm from './components/TrainingForm';
 import TrainingPreview from './components/TrainingPreview';
 
@@ -24,6 +25,20 @@ export default function App() {
     setGenerated({ profile, bmi, paces, plan });
   }
 
+  function handleDownload() {
+    if (!generated) {
+      throw new Error('Gere um plano antes de baixar a planilha.');
+    }
+
+    const workbook = createTrainingWorkbook(
+      generated.profile,
+      generated.paces,
+      generated.bmi,
+      generated.plan,
+    );
+    downloadTrainingWorkbook(workbook);
+  }
+
   return (
     <div className="app-shell">
       <header className="hero">
@@ -35,12 +50,19 @@ export default function App() {
       <main className="content">
         <TrainingForm onGenerate={handleGenerate} onInputChange={() => setGenerated(null)} />
         {generated && (
-          <TrainingPreview
-            profile={generated.profile}
-            paces={generated.paces}
-            bmi={generated.bmi}
-            plan={generated.plan}
-          />
+          <>
+            <TrainingPreview
+              profile={generated.profile}
+              paces={generated.paces}
+              bmi={generated.bmi}
+              plan={generated.plan}
+            />
+            <div className="download-row">
+              <button className="download-button" type="button" onClick={handleDownload}>
+                Baixar planilha XLSX
+              </button>
+            </div>
+          </>
         )}
       </main>
 

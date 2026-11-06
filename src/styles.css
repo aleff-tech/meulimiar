@@ -250,6 +250,12 @@ h2 {
   background: #1e5532;
 }
 
+.download-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -24px;
+}
+
 .pace-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
