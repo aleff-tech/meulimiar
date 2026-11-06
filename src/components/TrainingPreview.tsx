@@ -1,8 +1,13 @@
 import { getBmiTrainingGuidance } from '../domain/bmi';
 import { formatPace, PACE_RANGE_WARNING, type PaceTargets } from '../domain/paces';
 import type { RunnerProfile } from '../domain/profile';
-import { formatDuration } from '../domain/time';
-import type { QualityWorkoutType, TrainingPlan, WorkoutSession } from '../domain/trainingPlan';
+import type {
+  QualityWorkoutType,
+  TrainingPhase,
+  TrainingPlan,
+  WorkoutSession,
+} from '../domain/trainingPlan';
+import { formatCompleteWorkout } from '../domain/workoutText';
 import WorkoutTimeline, { WorkoutTimelineLegend } from './WorkoutTimeline';
 
 interface TrainingPreviewProps {
@@ -25,6 +30,13 @@ const qualityNames: Record<QualityWorkoutType, string> = {
   interval: 'Intervalado',
   fartlek: 'Fartlek',
   progressive: 'Progressivo',
+};
+
+const phaseNames: Record<TrainingPhase, string> = {
+  base: 'Base',
+  development: 'Desenvolvimento',
+  specific: 'Específica',
+  taper: 'Polimento',
 };
 
 function formatDistance(distanceKm: number): string {
@@ -72,10 +84,15 @@ export default function TrainingPreview({ profile, paces, bmi, plan }: TrainingP
           {targetNames[profile.targetDistanceKm]} · {plan.weeks.length} semanas ·{' '}
           {profile.sessionsPerWeek} sessões por semana
         </p>
-        <p className="race-goal-summary">
-          Prova: {formatRaceDate(profile.raceDate)} · Meta: {formatGoalTime(profile.goalTimeSeconds)}
-        </p>
       </div>
+
+      <aside className="race-event" aria-label="Evento da prova">
+        <p className="eyebrow">EVENTO</p>
+        <h3>Prova</h3>
+        <p>
+          {formatRaceDate(profile.raceDate)} · Meta: {formatGoalTime(profile.goalTimeSeconds)}
+        </p>
+      </aside>
 
       {paces.clamped && (
         <p className="notice" role="status">
@@ -123,9 +140,7 @@ export default function TrainingPreview({ profile, paces, bmi, plan }: TrainingP
               <th scope="col">Sessão</th>
               <th scope="col">Distância total</th>
               <th scope="col">Ritmo-alvo</th>
-              <th scope="col">Aquecimento</th>
               <th scope="col">Treino principal</th>
-              <th scope="col">Desaquecimento</th>
               <th scope="col">Estrutura visual</th>
             </tr>
           </thead>
@@ -133,27 +148,20 @@ export default function TrainingPreview({ profile, paces, bmi, plan }: TrainingP
             {plan.weeks.flatMap((week) =>
               week.sessions.map((session) => (
                 <tr key={`${session.week}-${session.session}`}>
-                  <th scope="row">Semana {week.week}</th>
+                  <th scope="row">
+                    <span>Semana {week.week}</span> · {phaseNames[week.phase]}
+                    {' · '}
+                    <br />
+                    <span>
+                      {formatRaceDate(week.startDate)} – {formatRaceDate(week.endDate)}
+                    </span>
+                  </th>
                   <td>
                     Treino {session.session} · {formatWorkoutType(session)}
                   </td>
                   <td>{formatDistance(session.distanceKm)} km</td>
                   <td>{formatPace(session.paceSecondsPerKm)} min/km</td>
-                  <td>
-                    {formatDuration(session.warmupDurationSeconds)} leve a{' '}
-                    {formatPace(paces.easySecondsPerKm)} min/km ·{' '}
-                    {formatDistance(session.warmupDistanceKm)} km
-                  </td>
-                  <td>
-                    {session.type === 'quality'
-                      ? session.description
-                      : `${formatDistance(session.mainDistanceKm)} km · ${session.description}`}
-                  </td>
-                  <td>
-                    {formatDuration(session.cooldownDurationSeconds)} leve a{' '}
-                    {formatPace(paces.easySecondsPerKm)} min/km ·{' '}
-                    {formatDistance(session.cooldownDistanceKm)} km
-                  </td>
+                  <td>{formatCompleteWorkout(session)}</td>
                   <td>
                     <WorkoutTimeline segments={session.segments} />
                   </td>

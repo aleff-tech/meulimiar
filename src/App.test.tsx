@@ -177,16 +177,22 @@ describe('running plan form and preview', () => {
     expect(screen.getByRole('table', { name: 'Treinos por semana' }).textContent).toBe(initialPlan);
   });
 
-  it('shows the race date and goal time with the generated plan', () => {
+  it('shows the race as a separate event and includes each week date range and phase', () => {
     render(<App />);
     const raceDate = localDateAfter(84);
     const [year, month, day] = raceDate.split('-');
     fillValidForm({ raceDate });
     fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
 
-    expect(
-      screen.getByText(new RegExp(`Prova: ${day}/${month}/${year} · Meta: 01:15:30`)),
-    ).toBeTruthy();
+    const raceEvent = screen.getByRole('complementary', { name: 'Evento da prova' });
+    expect(within(raceEvent).getByText('Prova')).toBeTruthy();
+    expect(within(raceEvent).getByText(new RegExp(`${day}/${month}/${year} · Meta: 01:15:30`))).toBeTruthy();
+
+    const table = screen.getByRole('table', { name: 'Treinos por semana' });
+    expect(within(table).queryByText('Prova')).toBeNull();
+    expect(within(table).getAllByRole('row')[1].textContent).toMatch(
+      /Semana 1 · Base · \d{2}\/\d{2}\/\d{4} – \d{2}\/\d{2}\/\d{4}/,
+    );
   });
 
   it('does not generate a plan when required values are missing', () => {
@@ -227,7 +233,7 @@ describe('running plan form and preview', () => {
     expect(screen.getByRole('list', { name: 'Legenda da estrutura do treino' })).toBeTruthy();
   });
 
-  it('shows easy warm-up and cool-down phases and the quality workout after them', () => {
+  it('shows the complete quality workout in one cell without separate warm-up or cool-down columns', () => {
     render(<App />);
     fillValidForm();
     fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
@@ -237,13 +243,13 @@ describe('running plan form and preview', () => {
       .getAllByRole('row')
       .find((row) => row.textContent?.includes('Qualidade · Limiar'));
 
-    expect(screen.getByRole('columnheader', { name: 'Aquecimento' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'Aquecimento' })).toBeNull();
     expect(screen.getByRole('columnheader', { name: 'Treino principal' })).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: 'Desaquecimento' })).toBeTruthy();
-    expect(qualityRow?.textContent).toContain('09:58');
-    expect(qualityRow?.textContent).toContain('04:59');
-    expect(qualityRow?.textContent).toContain('leve a 6:00 min/km');
-    expect(qualityRow?.textContent).toContain('Limiar:');
+    expect(screen.queryByRole('columnheader', { name: 'Desaquecimento' })).toBeNull();
+    const workoutCell = qualityRow ? within(qualityRow).getAllByRole('cell')[3] : null;
+    expect(workoutCell?.textContent).toMatch(
+      /Aquecimento:.*Limiar:.*Desaquecimento:/,
+    );
   });
 
   it('shows a warning when a quality session is adapted to easy running', () => {

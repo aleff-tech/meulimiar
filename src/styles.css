@@ -284,6 +284,30 @@ h2 {
   margin-bottom: 22px;
 }
 
+.race-event {
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border: 1px solid #dfe8dc;
+  border-left: 4px solid #3e86c5;
+  border-radius: 10px;
+  background: #f7f9f6;
+}
+
+.race-event .eyebrow {
+  margin-bottom: 4px;
+}
+
+.race-event h3,
+.race-event p:last-child {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.race-event h3 {
+  color: #334439;
+  font-size: 1rem;
+}
+
 .workout-timeline-legend {
   display: flex;
   flex-wrap: wrap;
@@ -307,11 +331,30 @@ h2 {
   border-radius: 3px;
 }
 
+.workout-timeline-chart {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 22rem;
+  height: 3.25rem;
+}
+
+.workout-timeline__axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: #55645a;
+  font-size: 0.68rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .workout-timeline {
   display: flex;
-  width: 100%;
-  min-width: 22rem;
-  height: 2.5rem;
+  flex: 1;
+  align-items: flex-end;
+  min-width: 0;
+  height: 100%;
   overflow: hidden;
   border-radius: 7px;
   background: #e8ede6;
@@ -319,8 +362,8 @@ h2 {
 
 .workout-timeline__segment {
   display: block;
-  min-width: 4px;
   flex-shrink: 0;
+  align-self: flex-end;
   border-right: 1px solid rgb(255 255 255 / 55%);
 }
 
@@ -346,6 +389,15 @@ h2 {
 
 .workout-phase--cooldown {
   background: #d97160;
+}
+
+.workout-phase--race-pace {
+  background-color: #7854a8;
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 4px,
+    rgb(255 255 255 / 38%) 4px 6px
+  );
 }
 
 .table-scroll {
