@@ -1,6 +1,7 @@
 import { formatPace, PACE_RANGE_WARNING, type PaceTargets } from '../domain/paces';
 import type { RunnerProfile } from '../domain/profile';
-import type { TrainingPlan } from '../domain/trainingPlan';
+import { formatDuration } from '../domain/time';
+import type { QualityWorkoutType, TrainingPlan, WorkoutSession } from '../domain/trainingPlan';
 
 interface TrainingPreviewProps {
   profile: RunnerProfile;
@@ -17,11 +18,25 @@ const targetNames: Record<RunnerProfile['targetDistanceKm'], string> = {
   42.2: 'maratona (42,2 km)',
 };
 
+const qualityNames: Record<QualityWorkoutType, string> = {
+  threshold: 'Limiar',
+  interval: 'Intervalado',
+  fartlek: 'Fartlek',
+  progressive: 'Progressivo',
+};
+
 function formatDistance(distanceKm: number): string {
   return new Intl.NumberFormat('pt-BR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(distanceKm);
+}
+
+function formatWorkoutType(session: WorkoutSession): string {
+  if (session.type === 'quality') {
+    return session.qualityType ? `Qualidade · ${qualityNames[session.qualityType]}` : 'Qualidade';
+  }
+  return session.type === 'long' ? 'Longo' : 'Leve';
 }
 
 export default function TrainingPreview({ profile, paces, bmi, plan }: TrainingPreviewProps) {
@@ -79,9 +94,11 @@ export default function TrainingPreview({ profile, paces, bmi, plan }: TrainingP
             <tr>
               <th scope="col">Semana</th>
               <th scope="col">Sessão</th>
-              <th scope="col">Distância</th>
+              <th scope="col">Distância total</th>
               <th scope="col">Ritmo-alvo</th>
-              <th scope="col">Orientação</th>
+              <th scope="col">Aquecimento</th>
+              <th scope="col">Treino principal</th>
+              <th scope="col">Desaquecimento</th>
             </tr>
           </thead>
           <tbody>
@@ -90,16 +107,25 @@ export default function TrainingPreview({ profile, paces, bmi, plan }: TrainingP
                 <tr key={`${session.week}-${session.session}`}>
                   <th scope="row">Semana {week.week}</th>
                   <td>
-                    Treino {session.session} ·{' '}
-                    {session.type === 'quality'
-                      ? 'Qualidade'
-                      : session.type === 'long'
-                        ? 'Longo'
-                        : 'Leve'}
+                    Treino {session.session} · {formatWorkoutType(session)}
                   </td>
                   <td>{formatDistance(session.distanceKm)} km</td>
                   <td>{formatPace(session.paceSecondsPerKm)} min/km</td>
-                  <td>{session.description}</td>
+                  <td>
+                    {formatDuration(session.warmupDurationSeconds)} leve a{' '}
+                    {formatPace(paces.easySecondsPerKm)} min/km ·{' '}
+                    {formatDistance(session.warmupDistanceKm)} km
+                  </td>
+                  <td>
+                    {session.type === 'quality'
+                      ? session.description
+                      : `${formatDistance(session.mainDistanceKm)} km · ${session.description}`}
+                  </td>
+                  <td>
+                    {formatDuration(session.cooldownDurationSeconds)} leve a{' '}
+                    {formatPace(paces.easySecondsPerKm)} min/km ·{' '}
+                    {formatDistance(session.cooldownDistanceKm)} km
+                  </td>
                 </tr>
               )),
             )}

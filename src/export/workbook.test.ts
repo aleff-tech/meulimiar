@@ -88,6 +88,49 @@ describe('createTrainingWorkbook', () => {
     expect(weekTwoDistance?.z).toBe('0.00');
   });
 
+  it('preserves workout phases, quality details, and numeric totals after XLSX round-trip', () => {
+    const workbook = createTrainingWorkbook(profile, paces, 22.9, plan);
+    const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const reopened = XLSX.read(bytes, { type: 'array', cellNF: true });
+    const sheet = reopened.Sheets['Plano semanal'];
+    const rows = XLSX.utils.sheet_to_json<(string | number)[]>(sheet, { header: 1 });
+    const headers = rows[0];
+    const qualityRow = rows.find((row) => row[0] === 1 && row[1] === 'Treino 1');
+
+    expect(headers).toContain('Aquecimento');
+    expect(headers).toContain('Parte principal (km)');
+    expect(headers).toContain('Desaquecimento');
+    expect(qualityRow?.[2]).toBe('Qualidade · Limiar');
+    expect(qualityRow?.[headers.indexOf('Aquecimento')]).toContain('09:58');
+    expect(qualityRow?.[headers.indexOf('Aquecimento')]).toContain('6:00 min/km');
+    expect(qualityRow?.[headers.indexOf('Parte principal (km)')]).toBe(3.51);
+    expect(qualityRow?.[headers.indexOf('Desaquecimento')]).toContain('04:59');
+    expect(qualityRow?.[headers.indexOf('Orientação')]).toContain('Limiar:');
+    expect(sheet.D2?.v).toBe(6);
+    expect(sheet.D2?.z).toBe('0.00');
+    expect(rows.find((row) => row[0] === 1 && row[1] === 'Treino 2')?.[2]).toBe('Leve');
+  });
+
+  it('exports the quality fallback warning in the summary after XLSX round-trip', () => {
+    const lowQualityProfile = { ...profile, currentWeeklyKm: 10 };
+    const lowQualityPlan = buildTrainingPlan(lowQualityProfile, paces);
+    const workbook = createTrainingWorkbook(lowQualityProfile, paces, 22.9, lowQualityPlan);
+    const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const reopened = XLSX.read(bytes, { type: 'array' });
+    const summaryRows = XLSX.utils.sheet_to_json<(string | number)[]>(reopened.Sheets.Resumo, {
+      header: 1,
+    });
+
+    expect(
+      summaryRows.some(
+        (row) =>
+          row[0] === 'Aviso' &&
+          typeof row[1] === 'string' &&
+          row[1].includes('adaptada para corrida leve'),
+      ),
+    ).toBe(true);
+  });
+
 });
 
 describe('downloadTrainingWorkbook', () => {

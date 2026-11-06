@@ -1,7 +1,8 @@
 import * as XLSX from 'xlsx';
 import { formatPace, PACE_RANGE_WARNING, type PaceTargets } from '../domain/paces';
 import type { RunnerProfile } from '../domain/profile';
-import type { TrainingPlan } from '../domain/trainingPlan';
+import { formatDuration } from '../domain/time';
+import type { QualityWorkoutType, TrainingPlan, WorkoutSession } from '../domain/trainingPlan';
 
 function formatTime(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
@@ -11,10 +12,34 @@ function formatTime(totalSeconds: number): string {
   return [hours, minutes, seconds].map((part) => part.toString().padStart(2, '0')).join(':');
 }
 
-function formatWorkoutType(type: 'easy' | 'quality' | 'long'): string {
-  if (type === 'quality') return 'Qualidade';
-  if (type === 'long') return 'Longo';
+const qualityNames: Record<QualityWorkoutType, string> = {
+  threshold: 'Limiar',
+  interval: 'Intervalado',
+  fartlek: 'Fartlek',
+  progressive: 'Progressivo',
+};
+
+function formatWorkoutType(session: WorkoutSession): string {
+  if (session.type === 'quality') {
+    return session.qualityType ? `Qualidade · ${qualityNames[session.qualityType]}` : 'Qualidade';
+  }
+  if (session.type === 'long') return 'Longo';
   return 'Leve';
+}
+
+function formatDistance(distanceKm: number): string {
+  return new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(distanceKm);
+}
+
+function formatEasyPhase(
+  durationSeconds: number,
+  distanceKm: number,
+  easyPaceSecondsPerKm: number,
+): string {
+  return `${formatDuration(durationSeconds)} leve a ${formatPace(easyPaceSecondsPerKm)} min/km (${formatDistance(distanceKm)} km)`;
 }
 
 export function createTrainingWorkbook(
@@ -49,15 +74,29 @@ export function createTrainingWorkbook(
       'Distância (km)',
       'Ritmo-alvo (min/km)',
       'Orientação',
+      'Aquecimento',
+      'Parte principal (km)',
+      'Desaquecimento',
     ],
     ...plan.weeks.flatMap((week) =>
       week.sessions.map((session) => [
         week.week,
         `Treino ${session.session}`,
-        formatWorkoutType(session.type),
+        formatWorkoutType(session),
         session.distanceKm,
         `${formatPace(session.paceSecondsPerKm)} min/km`,
         session.description,
+        formatEasyPhase(
+          session.warmupDurationSeconds,
+          session.warmupDistanceKm,
+          paces.easySecondsPerKm,
+        ),
+        session.mainDistanceKm,
+        formatEasyPhase(
+          session.cooldownDurationSeconds,
+          session.cooldownDistanceKm,
+          paces.easySecondsPerKm,
+        ),
       ]),
     ),
   ];
@@ -69,6 +108,8 @@ export function createTrainingWorkbook(
   for (let row = 2; row <= calendarRows.length; row += 1) {
     const distanceCell = calendar[`D${row}`];
     if (distanceCell) distanceCell.z = '0.00';
+    const mainDistanceCell = calendar[`H${row}`];
+    if (mainDistanceCell) mainDistanceCell.z = '0.00';
   }
   calendar['!cols'] = [
     { wch: 10 },
@@ -77,6 +118,9 @@ export function createTrainingWorkbook(
     { wch: 17 },
     { wch: 23 },
     { wch: 58 },
+    { wch: 42 },
+    { wch: 20 },
+    { wch: 42 },
   ];
 
   const workbook = XLSX.utils.book_new();

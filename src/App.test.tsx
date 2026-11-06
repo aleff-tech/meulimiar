@@ -82,6 +82,38 @@ describe('running plan form and preview', () => {
     expect(screen.getAllByText('Semana 1').length).toBeGreaterThan(0);
   });
 
+  it('shows easy warm-up and cool-down phases and the quality workout after them', () => {
+    render(<App />);
+    fillValidForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
+
+    const table = screen.getByRole('table', { name: 'Treinos por semana' });
+    const weekOneRows = within(table)
+      .getAllByRole('row')
+      .filter((row) => row.textContent?.includes('Semana 1'));
+
+    expect(screen.getByRole('columnheader', { name: 'Aquecimento' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'Treino principal' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'Desaquecimento' })).toBeTruthy();
+    expect(weekOneRows[0].textContent).toContain('Qualidade · Limiar');
+    expect(weekOneRows[0].textContent).toContain('09:58');
+    expect(weekOneRows[0].textContent).toContain('04:59');
+    expect(weekOneRows[0].textContent).toContain('leve a 6:00 min/km');
+    expect(weekOneRows[0].textContent).toContain('Limiar:');
+    expect(weekOneRows[1].textContent).toContain('Leve');
+  });
+
+  it('shows a warning when a quality session is adapted to easy running', () => {
+    render(<App />);
+    fillValidForm();
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Km corridos por semana' }), {
+      target: { value: '10' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
+
+    expect(screen.getByText(/adaptada para corrida leve/)).toBeTruthy();
+  });
+
   it('shows session distances to the nearest 0.01 km', () => {
     render(<App />);
     fillValidForm();
