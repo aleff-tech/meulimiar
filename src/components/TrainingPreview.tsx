@@ -1,4 +1,4 @@
-import { formatPace, type PaceTargets } from '../domain/paces';
+import { formatPace, PACE_RANGE_WARNING, type PaceTargets } from '../domain/paces';
 import type { RunnerProfile } from '../domain/profile';
 import type { TrainingPlan } from '../domain/trainingPlan';
 
@@ -43,7 +43,7 @@ export default function TrainingPreview({ profile, paces, bmi, plan }: TrainingP
 
       {paces.clamped && (
         <p className="notice" role="status">
-          Seus ritmos foram limitados à faixa de referência de 20:00 a 25:00 nos 5 km.
+          {PACE_RANGE_WARNING}
         </p>
       )}
       {plan.warnings.map((warning) => (

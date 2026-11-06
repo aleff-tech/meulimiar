@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { formatPace, type PaceTargets } from '../domain/paces';
+import { formatPace, PACE_RANGE_WARNING, type PaceTargets } from '../domain/paces';
 import type { RunnerProfile } from '../domain/profile';
 import type { TrainingPlan } from '../domain/trainingPlan';
 
@@ -37,6 +37,7 @@ export function createTrainingWorkbook(
     ['Ritmo leve', `${formatPace(paces.easySecondsPerKm)} min/km`],
     ['Ritmo de limiar', `${formatPace(paces.thresholdSecondsPerKm)} min/km`],
     ['Ritmo de tiro', `${formatPace(paces.intervalSecondsPerKm)} min/km`],
+    ...(paces.clamped ? [['Aviso', PACE_RANGE_WARNING] as (string | number)[]] : []),
     ...plan.warnings.map((warning): (string | number)[] => ['Aviso', warning]),
   ];
 

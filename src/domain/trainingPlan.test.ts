@@ -93,6 +93,17 @@ describe('buildTrainingPlan', () => {
     expect(plan.weeks[0].sessions.map((session) => session.type)).toEqual(['easy', 'long']);
   });
 
+  it('rounds the long-run share down and assigns the remainder to an easy session', () => {
+    const plan = buildTrainingPlan(
+      { ...baseProfile, targetDistanceKm: 3, currentWeeklyKm: 1.01, sessionsPerWeek: 2 },
+      paces,
+    );
+    const [easy, long] = plan.weeks[0].sessions;
+
+    expect(easy.distanceKm).toBe(0.81);
+    expect(long.distanceKm).toBe(0.2);
+  });
+
   it('keeps the weekly distance equal to the sum of rounded sessions', () => {
     const plan = buildTrainingPlan({ ...baseProfile, sessionsPerWeek: 7 }, paces);
 
@@ -140,11 +151,13 @@ describe('buildTrainingPlan', () => {
 
   it('warns when one weekly session means there is no long run', () => {
     const plan = buildTrainingPlan(
-      { ...baseProfile, sessionsPerWeek: 1, weeksAvailable: 6 },
+      { ...baseProfile, targetDistanceKm: 3, currentWeeklyKm: 20, sessionsPerWeek: 1, weeksAvailable: 6 },
       paces,
     );
 
-    expect(plan.warnings.some((warning) => /longo/i.test(warning))).toBe(true);
+    expect(plan.warnings).toContain(
+      'Com uma sessão por semana, não é possível separar um treino longo das demais sessões; avalie se o volume planejado é adequado à distância da prova.',
+    );
   });
 
   it('does not warn about long-run distance when a 3 km plan reaches the threshold', () => {

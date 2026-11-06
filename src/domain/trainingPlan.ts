@@ -70,13 +70,15 @@ function distributeDistance(
             ),
           ];
 
-  const distances = shares
-    .slice(0, -1)
-    .map((share) => Math.floor(weeklyDistanceHundredths * share + 1e-8));
+  const distances = shares.map((share) => Math.floor(weeklyDistanceHundredths * share + 1e-8));
   const assignedDistance = distances.reduce((total, distance) => total + distance, 0);
-  distances.push(weeklyDistanceHundredths - assignedDistance);
+  const remainder = weeklyDistanceHundredths - assignedDistance;
+  const easyIndex = types.indexOf('easy');
+  if (easyIndex < 0) {
+    throw new Error('A distribuição de sessões precisa incluir um treino leve.');
+  }
 
-  return distances;
+  return distances.map((distance, index) => (index === easyIndex ? distance + remainder : distance));
 }
 
 function sessionPaceAndDescription(
@@ -123,7 +125,7 @@ function buildWarnings(profile: RunnerProfile, weeks: TrainingWeek[]): string[] 
 
   if (profile.sessionsPerWeek === 1) {
     warnings.push(
-      'Com uma sessão por semana, o plano não inclui treino longo; ele não desenvolve a distância necessária para a prova.',
+      'Com uma sessão por semana, não é possível separar um treino longo das demais sessões; avalie se o volume planejado é adequado à distância da prova.',
     );
   } else {
     const longestRunHundredths = weeks.reduce(

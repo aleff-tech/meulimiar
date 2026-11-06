@@ -104,7 +104,23 @@ describe('running plan form and preview', () => {
     fillValidForm({ hours: '0', minutes: '19', seconds: '59' });
     fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
 
-    expect(screen.getByText(/ritmos foram limitados à faixa de referência/)).toBeTruthy();
+    expect(screen.getByText(/podem não refletir seu esforço/)).toBeTruthy();
+  });
+
+  it('clears the cross-field time error when the corrected time is valid', () => {
+    render(<App />);
+    fillValidForm({ hours: '2', minutes: '0', seconds: '1' });
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
+
+    const timeError = 'O tempo nos 5 km deve ficar entre 00:01:00 e 02:00:00.';
+    expect(screen.getByText(timeError)).toBeTruthy();
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Segundos' }), {
+      target: { value: '0' },
+    });
+
+    expect(screen.queryByText(timeError)).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('clears a generated plan when the inputs change', () => {

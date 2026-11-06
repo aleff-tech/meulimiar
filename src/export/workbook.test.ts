@@ -54,6 +54,23 @@ describe('createTrainingWorkbook', () => {
     expect(summaryRows).toContainEqual(['IMC informativo', 22.9]);
   });
 
+  it('exports the pace-range warning in the summary after XLSX round-trip', () => {
+    const clampedProfile = { ...profile, fiveKmTimeSeconds: 2700 };
+    const clampedPaces = calculatePaces(clampedProfile.fiveKmTimeSeconds);
+    const clampedPlan = buildTrainingPlan(clampedProfile, clampedPaces);
+    const workbook = createTrainingWorkbook(clampedProfile, clampedPaces, 22.9, clampedPlan);
+    const bytes = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const reopened = XLSX.read(bytes, { type: 'array' });
+    const summaryRows = XLSX.utils.sheet_to_json<unknown[]>(reopened.Sheets.Resumo, {
+      header: 1,
+    });
+
+    expect(summaryRows).toContainEqual([
+      'Aviso',
+      'Seus ritmos foram limitados à faixa de referência de 20:00 a 25:00 nos 5 km e podem não refletir seu esforço; ajuste pelo conforto.',
+    ]);
+  });
+
   it('preserves two-decimal session distances as formatted numeric cells', () => {
     const lowBaseProfile = {
       ...profile,

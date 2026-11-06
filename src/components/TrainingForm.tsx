@@ -71,11 +71,29 @@ export default function TrainingForm({ onGenerate, onInputChange }: TrainingForm
         }).format(bmi);
 
   function updateField(field: keyof RunnerFormValues, value: string) {
-    setValues((current) => ({ ...current, [field]: value }));
+    const nextValues = { ...values, [field]: value };
+    setValues(nextValues);
     onInputChange();
     setErrors((current) => {
       const next = { ...current };
-      delete next[field];
+      const isTimeField = timeFields.some((timeField) => timeField.field === field);
+      if (!isTimeField || !hasSubmitted) {
+        delete next[field];
+        return next;
+      }
+
+      for (const timeField of timeFields) {
+        delete next[timeField.field];
+      }
+
+      const result = parseRunnerProfile(nextValues);
+      if (!result.ok) {
+        for (const timeField of timeFields) {
+          const error = result.errors[timeField.field];
+          if (error) next[timeField.field] = error;
+        }
+      }
+
       return next;
     });
   }

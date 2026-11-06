@@ -5,6 +5,9 @@ export interface PaceTargets {
   clamped: boolean;
 }
 
+export const PACE_RANGE_WARNING =
+  'Seus ritmos foram limitados à faixa de referência de 20:00 a 25:00 nos 5 km e podem não refletir seu esforço; ajuste pelo conforto.';
+
 interface PaceAnchor extends PaceTargets {
   fiveKmTimeSeconds: number;
 }

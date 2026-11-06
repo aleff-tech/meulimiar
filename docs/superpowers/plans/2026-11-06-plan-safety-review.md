@@ -45,12 +45,21 @@
 - Preserve `TrainingPlan.warnings: string[]`; add a warning for insufficient long-run distance without removing the short-cycle warning.
 - Preserve numeric XLSX distances while formatting calendar distance cells to two decimal places.
 
-- [ ] **Step 1: Add failing tests** across `trainingPlan.test.ts`, `App.test.tsx`, and `workbook.test.ts` for 0.01 km progression from a 1.00 km base in both preferences, the 20% cutback and 60% taper after rounding, exact session-sum invariants at 1/2/7 sessions, the five target long-run shares, the 75% and one-session warnings, and two-decimal UI/XLSX distance formatting.
-- [ ] **Step 2: Run `npm test -- --run src/domain/trainingPlan.test.ts src/App.test.tsx src/export/workbook.test.ts` and confirm the new assertions fail against current behavior.**
-- [ ] **Step 3: Implement 0.01 km-safe rounding and target allocation** in `trainingPlan.ts`. Round build, cutback, taper, and session allocations so caps are never exceeded; use a fixed 20% quality share when a quality session exists and divide the remaining weekly distance between the target-specific long share and easy sessions. Keep one-session weeks easy-only.
-- [ ] **Step 4: Add target readiness warnings** using the maximum scheduled `long` session across the cycle; warn below 75% of target distance, and explicitly report that no long run is scheduled for a one-session week. Keep short-cycle warnings intact.
-- [ ] **Step 5: Run the domain tests and verify** all new load, target-share, warning, and session-sum assertions pass.
-- [ ] **Step 6: Update visible precision and XLSX formatting.** Show two decimal places in `TrainingPreview`; keep calendar distances numeric and apply `0.00` number formatting to XLSX distance cells. Verify the tests from Step 1 pass.
-- [ ] **Step 7: Update the original implementation plan** so its distance precision requirement says 0.01 km and points to this correction design.
-- [ ] **Step 8: Run `npm test -- --run`, `npm run typecheck`, `npm run build`, and `npm run check:build`; verify all succeed.**
-- [ ] **Step 9: Commit** with message `fix: respect training load caps and target distance`.
+- [x] **Step 1: Add failing tests** across `trainingPlan.test.ts`, `App.test.tsx`, and `workbook.test.ts` for 0.01 km progression from a 1.00 km base in both preferences, the 20% cutback and 60% taper after rounding, exact session-sum invariants at 1/2/7 sessions, the five target long-run shares, the 75% and one-session warnings, and two-decimal UI/XLSX distance formatting.
+- [x] **Step 2: Run `npm test -- --run src/domain/trainingPlan.test.ts src/App.test.tsx src/export/workbook.test.ts` and confirm the new assertions fail against current behavior.**
+- [x] **Step 3: Implement 0.01 km-safe rounding and target allocation** in `trainingPlan.ts`. Round build, cutback, taper, and session allocations so caps are never exceeded; use a fixed 20% quality share when a quality session exists and divide the remaining weekly distance between the target-specific long share and easy sessions. Keep one-session weeks easy-only.
+- [x] **Step 4: Add target readiness warnings** using the maximum scheduled `long` session across the cycle; warn below 75% of target distance, and explicitly report that no long run is scheduled for a one-session week. Keep short-cycle warnings intact.
+- [x] **Step 5: Run the domain tests and verify** all new load, target-share, warning, and session-sum assertions pass.
+- [x] **Step 6: Update visible precision and XLSX formatting.** Show two decimal places in `TrainingPreview`; keep calendar distances numeric and apply `0.00` number formatting to XLSX distance cells. Verify the tests from Step 1 pass.
+- [x] **Step 7: Update the original implementation plan** so its distance precision requirement says 0.01 km and points to this correction design.
+- [x] **Step 8: Run `npm test -- --run`, `npm run typecheck`, `npm run build`, and `npm run check:build`; verify all succeed.**
+- [x] **Step 9: Commit** with message `fix: respect training load caps and target distance`.
+
+### Task 2: Addressing final-review findings
+
+- [x] Export the clamped-pace warning with the workbook summary and verify it after an XLSX round-trip.
+- [x] Round the long-run share down to 0.01 km and assign distribution remainder to an easy session.
+- [x] Clarify the one-session warning and revalidate the time group after edits.
+- [x] Run the test suite before deploying from the GitHub Pages workflow.
+- [x] Verify focused and full tests, typecheck, production build, and the Pages build check.
+- [x] Commit review fixes with message `fix: address training plan review findings`.
