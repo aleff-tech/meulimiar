@@ -1,4 +1,4 @@
-import { parseLocalDate, toLocalDateString } from './calendar';
+import { getCalendarWeekWindows, parseLocalDate, toLocalDateString } from './calendar';
 export type TargetDistanceKm = 3 | 5 | 10 | 21.1 | 42.2;
 
 export interface RunnerFormValues {
@@ -127,7 +127,7 @@ export function parseRunnerProfile(values: RunnerFormValues, today: Date = new D
     const diffDays = Math.round((parsedRaceDate.getTime() - todayLocal.getTime()) / (24 * 60 * 60 * 1000));
     if (diffDays <= 0) {
       errors.raceDate = 'A data da prova deve ser futura.';
-    } else if (diffDays > 24 * 7) {
+    } else if (getCalendarWeekWindows(todayLocal, values.raceDate).length > 24) {
       errors.raceDate = 'A prova deve estar dentro de 24 semanas.';
     }
   }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { getCalendarWeekWindows } from './calendar';
 import { parseRunnerProfile, type RunnerFormValues } from './profile';
 
 const validValues: RunnerFormValues & {
@@ -107,11 +108,37 @@ describe('parseRunnerProfile', () => {
   it('rejects malformed, past, and beyond-24-week race dates', () => {
     const malformedDate = parseRunnerProfile({ ...validValues, raceDate: '2026-13-40' }, new Date(2026, 1, 20));
     const pastDate = parseRunnerProfile({ ...validValues, raceDate: '2026-02-19' }, new Date(2026, 1, 20));
+    const todayDate = parseRunnerProfile({ ...validValues, raceDate: '2026-02-20' }, new Date(2026, 1, 20));
     const beyond24Weeks = parseRunnerProfile({ ...validValues, raceDate: '2026-08-20' }, new Date(2026, 1, 20));
 
     expect(malformedDate.ok).toBe(false);
     expect(pastDate.ok).toBe(false);
+    expect(todayDate).toMatchObject({ ok: false, errors: { raceDate: expect.any(String) } });
     expect(beyond24Weeks.ok).toBe(false);
+  });
+
+  it('rejects a 168-day race date spanning 25 Monday-based week windows', () => {
+    const today = new Date(2026, 1, 20);
+    expect(getCalendarWeekWindows(today, '2026-08-07')).toHaveLength(25);
+    expect(getCalendarWeekWindows(today, '2026-08-02')).toHaveLength(24);
+
+    const dateSpanning25Windows = parseRunnerProfile(
+      { ...validValues, raceDate: '2026-08-07' },
+      today,
+    );
+    const dateSpanning24Windows = parseRunnerProfile(
+      { ...validValues, raceDate: '2026-08-02' },
+      today,
+    );
+
+    expect(dateSpanning25Windows).toMatchObject({
+      ok: false,
+      errors: { raceDate: expect.any(String) },
+    });
+    expect(dateSpanning24Windows).toMatchObject({
+      ok: true,
+      value: { raceDate: '2026-08-02' },
+    });
   });
 
   it('accepts a race date inside four weeks and defaults adultConfirmed to false', () => {

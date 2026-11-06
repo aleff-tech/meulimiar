@@ -98,7 +98,7 @@ export function createTrainingWorkbook(
         formatCompleteWorkout(session),
       ]),
     ),
-    ['', 'Prova', '', '', '', `Data da prova: ${profile.raceDate}`, '', 'Evento da prova'],
+    ['', 'Prova', '', '', '', `Data da prova: ${formatDate(profile.raceDate)}`, '', 'Evento da prova'],
   ];
 
   const summary = XLSX.utils.aoa_to_sheet(summaryRows);

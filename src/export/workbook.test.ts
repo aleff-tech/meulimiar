@@ -105,7 +105,7 @@ describe('createTrainingWorkbook', () => {
     expect(qualityRow?.[headers.indexOf('Treino completo')]).toBe(
       formatCompleteWorkout(qualitySession!),
     );
-    expect(eventRow?.[5]).toBe(`Data da prova: ${profile.raceDate}`);
+    expect(eventRow?.[5]).toBe('Data da prova: 01/03/2026');
     expect(eventRow?.[2]).toBe('');
     expect(eventRow?.[3]).toBe('');
     expect(trainingRows).toHaveLength(plan.weeks.reduce((count, week) => count + week.sessions.length, 0));
@@ -117,10 +117,13 @@ describe('createTrainingWorkbook', () => {
   it('preserves sheet names and representative cells after XLSX round-trip', () => {
     const reopened = reopenWorkbook();
     const summaryRows = rowsFor(reopened, 'Resumo');
+    const weeklyRows = rowsFor(reopened, 'Plano semanal');
+    const eventRow = weeklyRows.find((row) => row[1] === 'Prova');
 
     expect(reopened.SheetNames).toEqual(['Resumo', 'Plano semanal']);
     expect(summaryRows).toContainEqual(['Distância-alvo (km)', 10]);
     expect(summaryRows).toContainEqual(['IMC informativo', 22.9]);
+    expect(eventRow?.[5]).toBe('Data da prova: 01/03/2026');
   });
 });
 
