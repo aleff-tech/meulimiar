@@ -56,6 +56,7 @@
 
 **Interfaces:**
 - Produces `RunnerProfile.raceDate: string` (`YYYY-MM-DD`), `goalTimeSeconds: number`, and `adultConfirmed: boolean`.
+- Preserves `RunnerFormValues.fiveKmHours`, `fiveKmMinutes`, and `fiveKmSeconds`, and `RunnerProfile.fiveKmTimeSeconds`.
 - Produces `RunnerFormValues.raceDate`, `goalTimeHours`, `goalTimeMinutes`, `goalTimeSeconds`, and `adultConfirmed`.
 - Produces `parseLocalDate(value: string): Date | undefined`, `toLocalDateString(date: Date): string`, and `getCalendarWeekWindows(today: Date, raceDate: string): CalendarWeekWindow[]`.
 - `CalendarWeekWindow` contains `startDate: string`, `endDate: string`, and `availableTrainingDays: number` (calendar days before race day).
@@ -63,7 +64,7 @@
 
 - [ ] **Step 1: Write failing profile/date tests**
 
-Add tests proving valid future race dates and goal times parse; malformed/past dates, invalid clock components, and a cycle beyond 24 calendar weeks fail; a future date inside four weeks remains valid; `adultConfirmed` defaults through the profile as a boolean without being required. Add calendar cases for Monday boundaries, a partial first/last week, leap day, and race-day exclusion.
+Add tests proving the existing 5 km time remains parsed with its current bounds, valid future race dates and goal times parse; malformed/past dates, invalid clock components, and a cycle beyond 24 calendar weeks fail; a future date inside four weeks remains valid; `adultConfirmed` defaults through the profile as a boolean without being required. Add calendar cases for Monday boundaries, a partial first/last week, leap day, and race-day exclusion.
 
 - [ ] **Step 2: Run focused tests and verify the new cases fail**
 
@@ -72,7 +73,7 @@ Expected: FAIL because the new profile fields and calendar helpers do not exist.
 
 - [ ] **Step 3: Implement date-only helpers and update profile validation**
 
-In `calendar.ts`, parse local calendar dates without UTC round-tripping, produce Monday-to-Sunday windows clipped to today/race date, and count available training days excluding race day. In `profile.ts`, remove `weeksAvailable` and `preference`, add the new fields, validate goal hours `0–23` and minutes/seconds `0–59`, require a positive total goal time, and enforce the 24-week window limit while allowing shorter cycles. Keep boolean `adultConfirmed` out of numeric/string parsing helpers.
+In `calendar.ts`, parse local calendar dates without UTC round-tripping, produce Monday-to-Sunday windows clipped to today/race date, and count available training days excluding race day. In `profile.ts`, remove `weeksAvailable` and `preference`, preserve the existing 5 km time fields, total, and bounds, add the new race/goal fields, validate goal hours `0–23` and minutes/seconds `0–59`, require a positive total goal time, and enforce the 24-week window limit while allowing shorter cycles. Keep boolean `adultConfirmed` out of numeric/string parsing helpers.
 
 - [ ] **Step 4: Run focused tests and verify they pass**
 
