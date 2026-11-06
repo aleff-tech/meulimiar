@@ -3,6 +3,7 @@ import { formatPace, PACE_RANGE_WARNING, type PaceTargets } from '../domain/pace
 import type { RunnerProfile } from '../domain/profile';
 import { formatDuration } from '../domain/time';
 import type { QualityWorkoutType, TrainingPlan, WorkoutSession } from '../domain/trainingPlan';
+import WorkoutTimeline, { WorkoutTimelineLegend } from './WorkoutTimeline';
 
 interface TrainingPreviewProps {
   profile: RunnerProfile;
@@ -94,6 +95,7 @@ export default function TrainingPreview({ profile, paces, bmi, plan }: TrainingP
         </p>
       )}
 
+      <WorkoutTimelineLegend />
       <div className="table-scroll">
         <table>
           <caption>Treinos por semana</caption>
@@ -106,6 +108,7 @@ export default function TrainingPreview({ profile, paces, bmi, plan }: TrainingP
               <th scope="col">Aquecimento</th>
               <th scope="col">Treino principal</th>
               <th scope="col">Desaquecimento</th>
+              <th scope="col">Estrutura visual</th>
             </tr>
           </thead>
           <tbody>
@@ -132,6 +135,9 @@ export default function TrainingPreview({ profile, paces, bmi, plan }: TrainingP
                     {formatDuration(session.cooldownDurationSeconds)} leve a{' '}
                     {formatPace(paces.easySecondsPerKm)} min/km ·{' '}
                     {formatDistance(session.cooldownDistanceKm)} km
+                  </td>
+                  <td>
+                    <WorkoutTimeline segments={session.segments} />
                   </td>
                 </tr>
               )),

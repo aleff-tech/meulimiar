@@ -107,6 +107,22 @@ describe('running plan form and preview', () => {
     expect(screen.getAllByText('Semana 1').length).toBeGreaterThan(0);
   });
 
+  it('renders an accessible timeline for every session in the weekly preview', () => {
+    render(<App />);
+    fillValidForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
+
+    const table = screen.getByRole('table', { name: 'Treinos por semana' });
+    expect(within(table).getByRole('columnheader', { name: 'Estrutura visual' })).toBeTruthy();
+
+    const timelines = within(table).getAllByRole('img');
+    expect(timelines).toHaveLength(48);
+    expect(timelines[0].getAttribute('aria-label')).toMatch(
+      /Aquecimento.*Limiar.*Recuperação leve.*Desaquecimento/,
+    );
+    expect(screen.getByRole('list', { name: 'Legenda da estrutura do treino' })).toBeTruthy();
+  });
+
   it('shows easy warm-up and cool-down phases and the quality workout after them', () => {
     render(<App />);
     fillValidForm();
