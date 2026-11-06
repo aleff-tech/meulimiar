@@ -196,7 +196,7 @@ Expected: PASS, including form validation, BMI gating, date/goal display, and ge
 - [ ] **Step 5: Commit the form/App change**
 
 ```powershell
-git add src\components\TrainingForm.tsx src\App.tsx src\styles.css src\App.test.tsx
+git add src\components\TrainingForm.tsx src\App.tsx src\components\TrainingPreview.tsx src\styles.css src\App.test.tsx
 git commit -m "feat: collect race date and finish time" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 ```
 
