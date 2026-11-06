@@ -26,7 +26,7 @@
 
 ## Review Focus
 
-- **Invalid, past, and >24-week dates; partial Monday-based weeks:** tests must verify date-only parsing, week boundaries, race-day exclusion, and no training dates before today in Tasks 1 and 3.
+- **Invalid, past, and >24-week dates; partial Monday-based weeks:** tests must verify date-only parsing, week boundaries, race-event exclusion from sessions/volume, and no week range beginning before today in Tasks 1 and 3.
 - **Goal at the 5% ambition threshold or faster than current interval pace:** Task 2 tests the warning boundary, the Riegel estimate, and the pace cap.
 - **Low weekly distance and 1–2 sessions for longer targets:** Task 3 tests that session distribution, distance totals, and existing long-run/quality safeguards remain valid.
 - **BMI at 30 with/without 18+ confirmation:** Tasks 1 and 4 test that the numeric BMI remains informative but adult guidance is gated correctly.
@@ -138,7 +138,7 @@ git commit -m "feat: assess race goals from five kilometer pace" -m "Co-authored
 
 - [ ] **Step 1: Write failing plan-generation tests**
 
-Test a 12-week plan with Monday-based date ranges and exactly 3 base, 3 development, 5 specific, and 1 taper weeks; a 1–3-week plan that warns and does not increase volume to compensate; the 5% growth ceiling, 20% fourth-week recovery, and 60% peak taper; a goal warning and capped goal-pace segments; partial-week session counts excluding race day; zero training days on race day; and distance totals/session-count invariants for 1, 2, 4, and 7 sessions per week.
+Test a 12-week plan with Monday-based date ranges and exactly 3 base, 3 development, 5 specific, and 1 taper weeks; a 1–3-week plan that warns and does not increase volume to compensate; the 5% growth ceiling, 20% fourth-week recovery, and 60% peak taper; a goal warning and capped goal-pace segments; partial-week session counts capped by available training days; exclusion of the race event from sessions and weekly distance; and distance totals/session-count invariants for 1, 2, 4, and 7 sessions per week.
 
 - [ ] **Step 2: Run the plan tests and verify the new cases fail**
 
@@ -147,7 +147,7 @@ Expected: FAIL because the profile no longer has weeks/preference and plan weeks
 
 - [ ] **Step 3: Implement phase assignment and calendar-aware progression**
 
-Use the calendar windows from Task 1. For cycles of at least four weeks, assign `max(1, floor(weeks * 0.25))` base weeks, then `max(1, floor(weeks * 0.30))` development weeks, then specific weeks until the final taper week; keep taper last. For shorter cycles, use base weeks followed by taper and omit phases that cannot fit (a one-week cycle is taper only). Scale partial-week volume by available training days, cap partial-week sessions at available days, preserve the existing one-quality-session rule and distance distribution, and keep the race event out of workout totals. In specific-phase interval workouts, prescribe work segments at the capped goal pace; in progressive workouts, use the capped goal pace for the final segment. Add the `race-pace` segment phase for those blocks; retain existing paces for other sessions. Preserve existing distance-based and session-adaptation warnings and add the short-cycle/ambitious-goal warnings.
+Use the calendar windows from Task 1. Sessions remain weekly rather than individually scheduled by date; week date ranges are clipped to the cycle, partial-week session counts are capped by available training days, and the race remains a separate event rather than a workout. For cycles of at least four weeks, assign `max(1, floor(weeks * 0.25))` base weeks, then `max(1, floor(weeks * 0.30))` development weeks, then specific weeks until the final taper week; keep taper last. For shorter cycles, use base weeks followed by taper and omit phases that cannot fit (a one-week cycle is taper only). Scale partial-week volume by available training days, preserve the existing one-quality-session rule and distance distribution, and keep the race event out of workout totals. In specific-phase interval workouts, prescribe work segments at the capped goal pace; in progressive workouts, use the capped goal pace for the final segment. Add the `race-pace` segment phase for those blocks; retain existing paces for other sessions. Preserve existing distance-based and session-adaptation warnings and add the short-cycle/ambitious-goal warnings.
 
 - [ ] **Step 4: Run the plan tests and verify they pass**
 
