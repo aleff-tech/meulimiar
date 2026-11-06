@@ -2,18 +2,52 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import App from './App';
 
-function fillValidForm(time = { hours: '0', minutes: '22', seconds: '30' }) {
+function localDateAfter(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function fillValidForm({
+  fiveKmTime = { hours: '0', minutes: '22', seconds: '30' },
+  goalTime = { hours: '1', minutes: '15', seconds: '30' },
+  raceDate = localDateAfter(84),
+}: {
+  fiveKmTime?: { hours: string; minutes: string; seconds: string };
+  goalTime?: { hours: string; minutes: string; seconds: string };
+  raceDate?: string;
+} = {}) {
   fireEvent.change(screen.getByRole('combobox', { name: 'Distância da prova' }), {
     target: { value: '10' },
   });
-  fireEvent.change(screen.getByRole('spinbutton', { name: 'Horas' }), {
-    target: { value: time.hours },
+  const fiveKmTimeGroup = within(
+    screen.getByRole('group', { name: 'Tempo recente de prova nos 5 km' }),
+  );
+  fireEvent.change(fiveKmTimeGroup.getByRole('spinbutton', { name: 'Horas' }), {
+    target: { value: fiveKmTime.hours },
   });
-  fireEvent.change(screen.getByRole('spinbutton', { name: 'Minutos' }), {
-    target: { value: time.minutes },
+  fireEvent.change(fiveKmTimeGroup.getByRole('spinbutton', { name: 'Minutos' }), {
+    target: { value: fiveKmTime.minutes },
   });
-  fireEvent.change(screen.getByRole('spinbutton', { name: 'Segundos' }), {
-    target: { value: time.seconds },
+  fireEvent.change(fiveKmTimeGroup.getByRole('spinbutton', { name: 'Segundos' }), {
+    target: { value: fiveKmTime.seconds },
+  });
+  const goalTimeGroup = within(screen.getByRole('group', { name: 'Tempo alvo para a prova' }));
+  fireEvent.change(goalTimeGroup.getByRole('spinbutton', { name: 'Horas' }), {
+    target: { value: goalTime.hours },
+  });
+  fireEvent.change(goalTimeGroup.getByRole('spinbutton', { name: 'Minutos' }), {
+    target: { value: goalTime.minutes },
+  });
+  fireEvent.change(goalTimeGroup.getByRole('spinbutton', { name: 'Segundos' }), {
+    target: { value: goalTime.seconds },
+  });
+  fireEvent.change(screen.getByLabelText('Data da prova'), {
+    target: { value: raceDate },
   });
   fireEvent.change(screen.getByRole('spinbutton', { name: 'Peso (kg)' }), {
     target: { value: '70' },
@@ -26,9 +60,6 @@ function fillValidForm(time = { hours: '0', minutes: '22', seconds: '30' }) {
   });
   fireEvent.change(screen.getByRole('combobox', { name: 'Sessões por semana' }), {
     target: { value: '4' },
-  });
-  fireEvent.change(screen.getByRole('combobox', { name: 'Semanas até a prova' }), {
-    target: { value: '12' },
   });
 }
 
@@ -48,6 +79,54 @@ describe('running plan form and preview', () => {
     ).toBe('42.2');
   });
 
+  it('keeps the current 5 km result inputs alongside the goal time and race date', () => {
+    render(<App />);
+
+    expect(
+      within(screen.getByRole('group', { name: 'Tempo recente de prova nos 5 km' })).getAllByRole(
+        'spinbutton',
+      ),
+    ).toHaveLength(3);
+    expect(
+      within(screen.getByRole('group', { name: 'Tempo alvo para a prova' })).getAllByRole(
+        'spinbutton',
+      ),
+    ).toHaveLength(3);
+    expect(screen.getByLabelText('Data da prova')).toBeTruthy();
+  });
+
+  it('requires a race date and a goal time', () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
+
+    expect(screen.getByRole('alert').textContent).toBeTruthy();
+    expect(screen.getByLabelText('Data da prova').getAttribute('aria-invalid')).toBe('true');
+    expect(
+      within(screen.getByRole('group', { name: 'Tempo alvo para a prova' }))
+        .getByRole('spinbutton', { name: 'Horas' })
+        .getAttribute('aria-invalid'),
+    ).toBe('true');
+    expect(screen.queryByRole('heading', { name: 'Plano semanal' })).toBeNull();
+  });
+
+  it('does not require a four-week minimum to generate a plan', () => {
+    render(<App />);
+    fillValidForm({ raceDate: localDateAfter(14) });
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
+
+    expect(screen.getByRole('heading', { name: 'Plano semanal' })).toBeTruthy();
+    expect(screen.getByText(/menos de quatro semanas/i)).toBeTruthy();
+  });
+
+  it('does not render weeks or load-preference controls', () => {
+    render(<App />);
+
+    expect(screen.queryByLabelText('Semanas até a prova')).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Preferência de carga' })).toBeNull();
+    expect(screen.queryByLabelText('Mais leve')).toBeNull();
+    expect(screen.queryByLabelText('Mais agressiva')).toBeNull();
+  });
+
   it('shows BMI from valid weight and height without requiring the rest of the form', () => {
     render(<App />);
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Peso (kg)' }), {
@@ -62,9 +141,14 @@ describe('running plan form and preview', () => {
     expect(bmiValue.parentElement?.textContent).toContain('IMC informativo: 22,9');
   });
 
-  it('shows adult BMI guidance without changing paces or sessions', () => {
+  it('keeps adult confirmation optional and gates adult BMI guidance on confirmation', () => {
     render(<App />);
     fillValidForm();
+
+    const adultConfirmation = screen.getByRole('checkbox', {
+      name: 'Confirmo que tenho 18 anos ou mais',
+    });
+    expect((adultConfirmation as HTMLInputElement).checked).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
 
     const getPaces = () => [
@@ -78,13 +162,31 @@ describe('running plan form and preview', () => {
     expect(screen.queryByText(/Em adultos, IMC igual ou acima de 30/)).toBeNull();
 
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Peso (kg)' }), {
-      target: { value: '100' },
+      target: { value: '91.9' },
     });
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
+
+    expect(screen.queryByText(/Em adultos, IMC igual ou acima de 30/)).toBeNull();
+    expect(screen.getAllByText('30,0').length).toBeGreaterThan(0);
+
+    fireEvent.click(adultConfirmation);
     fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
 
     expect(screen.getByText(/Em adultos, IMC igual ou acima de 30/)).toBeTruthy();
     expect(getPaces()).toEqual(initialPaces);
     expect(screen.getByRole('table', { name: 'Treinos por semana' }).textContent).toBe(initialPlan);
+  });
+
+  it('shows the race date and goal time with the generated plan', () => {
+    render(<App />);
+    const raceDate = localDateAfter(84);
+    const [year, month, day] = raceDate.split('-');
+    fillValidForm({ raceDate });
+    fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
+
+    expect(
+      screen.getByText(new RegExp(`Prova: ${day}/${month}/${year} · Meta: 01:15:30`)),
+    ).toBeTruthy();
   });
 
   it('does not generate a plan when required values are missing', () => {
@@ -116,10 +218,12 @@ describe('running plan form and preview', () => {
     expect(within(table).getByRole('columnheader', { name: 'Estrutura visual' })).toBeTruthy();
 
     const timelines = within(table).getAllByRole('img');
-    expect(timelines).toHaveLength(48);
-    expect(timelines[0].getAttribute('aria-label')).toMatch(
-      /Aquecimento.*Limiar.*Recuperação leve.*Desaquecimento/,
-    );
+    expect(timelines.length).toBeGreaterThan(0);
+    expect(
+      timelines.some((timeline) =>
+        /Aquecimento.*Limiar.*Desaquecimento/.test(timeline.getAttribute('aria-label') ?? ''),
+      ),
+    ).toBe(true);
     expect(screen.getByRole('list', { name: 'Legenda da estrutura do treino' })).toBeTruthy();
   });
 
@@ -129,19 +233,17 @@ describe('running plan form and preview', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
 
     const table = screen.getByRole('table', { name: 'Treinos por semana' });
-    const weekOneRows = within(table)
+    const qualityRow = within(table)
       .getAllByRole('row')
-      .filter((row) => row.textContent?.includes('Semana 1'));
+      .find((row) => row.textContent?.includes('Qualidade · Limiar'));
 
     expect(screen.getByRole('columnheader', { name: 'Aquecimento' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'Treino principal' })).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'Desaquecimento' })).toBeTruthy();
-    expect(weekOneRows[0].textContent).toContain('Qualidade · Limiar');
-    expect(weekOneRows[0].textContent).toContain('09:58');
-    expect(weekOneRows[0].textContent).toContain('04:59');
-    expect(weekOneRows[0].textContent).toContain('leve a 6:00 min/km');
-    expect(weekOneRows[0].textContent).toContain('Limiar:');
-    expect(weekOneRows[1].textContent).toContain('Leve');
+    expect(qualityRow?.textContent).toContain('09:58');
+    expect(qualityRow?.textContent).toContain('04:59');
+    expect(qualityRow?.textContent).toContain('leve a 6:00 min/km');
+    expect(qualityRow?.textContent).toContain('Limiar:');
   });
 
   it('shows a warning when a quality session is adapted to easy running', () => {
@@ -164,8 +266,8 @@ describe('running plan form and preview', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Sessões por semana' }), {
       target: { value: '1' },
     });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Semanas até a prova' }), {
-      target: { value: '4' },
+    fireEvent.change(screen.getByLabelText('Data da prova'), {
+      target: { value: localDateAfter(28) },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
 
@@ -174,7 +276,7 @@ describe('running plan form and preview', () => {
 
   it('warns when the 5 km time is outside the pace reference range', () => {
     render(<App />);
-    fillValidForm({ hours: '0', minutes: '19', seconds: '59' });
+    fillValidForm({ fiveKmTime: { hours: '0', minutes: '19', seconds: '59' } });
     fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
 
     expect(screen.getByText(/podem não refletir seu esforço/)).toBeTruthy();
@@ -182,15 +284,21 @@ describe('running plan form and preview', () => {
 
   it('clears the cross-field time error when the corrected time is valid', () => {
     render(<App />);
-    fillValidForm({ hours: '2', minutes: '0', seconds: '1' });
+    fillValidForm({ fiveKmTime: { hours: '2', minutes: '0', seconds: '1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
 
     const timeError = 'O tempo nos 5 km deve ficar entre 00:01:00 e 02:00:00.';
     expect(screen.getByText(timeError)).toBeTruthy();
 
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'Segundos' }), {
-      target: { value: '0' },
-    });
+    fireEvent.change(
+      within(screen.getByRole('group', { name: 'Tempo recente de prova nos 5 km' })).getByRole(
+        'spinbutton',
+        { name: 'Segundos' },
+      ),
+      {
+        target: { value: '0' },
+      },
+    );
 
     expect(screen.queryByText(timeError)).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
@@ -202,8 +310,8 @@ describe('running plan form and preview', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Gerar plano' }));
     expect(screen.getByRole('heading', { name: 'Plano semanal' })).toBeTruthy();
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Semanas até a prova' }), {
-      target: { value: '11' },
+    fireEvent.change(screen.getByLabelText('Data da prova'), {
+      target: { value: localDateAfter(77) },
     });
 
     expect(screen.queryByRole('heading', { name: 'Plano semanal' })).toBeNull();

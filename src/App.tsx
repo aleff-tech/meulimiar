@@ -20,7 +20,7 @@ export default function App() {
   function handleGenerate(profile: RunnerProfile) {
     const paces = calculatePaces(profile.fiveKmTimeSeconds);
     const bmi = calculateBmi(profile.weightKg, profile.heightCm);
-    const plan = buildTrainingPlan(profile, paces);
+    const plan = buildTrainingPlan(profile, paces, new Date());
 
     setGenerated({ profile, bmi, paces, plan });
   }

@@ -18,17 +18,28 @@ const timeFields = [
   { field: 'fiveKmSeconds', label: 'Segundos', max: 59 },
 ] as const;
 
+const goalTimeFields = [
+  { field: 'goalTimeHours', label: 'Horas', max: 23 },
+  { field: 'goalTimeMinutes', label: 'Minutos', max: 59 },
+  { field: 'goalTimeSeconds', label: 'Segundos', max: 59 },
+] as const;
+
+const allTimeFields = [...timeFields, ...goalTimeFields];
+
 const initialValues: RunnerFormValues = {
   targetDistanceKm: '',
   fiveKmHours: '',
   fiveKmMinutes: '',
   fiveKmSeconds: '',
+  goalTimeHours: '',
+  goalTimeMinutes: '',
+  goalTimeSeconds: '',
   weightKg: '',
   heightCm: '',
   currentWeeklyKm: '',
   sessionsPerWeek: '',
-  weeksAvailable: '',
-  preference: 'light',
+  raceDate: '',
+  adultConfirmed: false,
 };
 
 function readMeasurement(value: string): number | undefined {
@@ -70,25 +81,25 @@ export default function TrainingForm({ onGenerate, onInputChange }: TrainingForm
           maximumFractionDigits: 1,
         }).format(bmi);
 
-  function updateField(field: keyof RunnerFormValues, value: string) {
+  function updateField(field: keyof RunnerFormValues, value: string | boolean) {
     const nextValues = { ...values, [field]: value };
     setValues(nextValues);
     onInputChange();
     setErrors((current) => {
       const next = { ...current };
-      const isTimeField = timeFields.some((timeField) => timeField.field === field);
+      const isTimeField = allTimeFields.some((timeField) => timeField.field === field);
       if (!isTimeField || !hasSubmitted) {
         delete next[field];
         return next;
       }
 
-      for (const timeField of timeFields) {
+      for (const timeField of allTimeFields) {
         delete next[timeField.field];
       }
 
       const result = parseRunnerProfile(nextValues);
       if (!result.ok) {
-        for (const timeField of timeFields) {
+        for (const timeField of allTimeFields) {
           const error = result.errors[timeField.field];
           if (error) next[timeField.field] = error;
         }
@@ -180,6 +191,50 @@ export default function TrainingForm({ onGenerate, onInputChange }: TrainingForm
           </fieldset>
 
           <div className="field">
+            <label htmlFor="raceDate">Data da prova</label>
+            <input
+              id="raceDate"
+              name="raceDate"
+              type="date"
+              value={values.raceDate}
+              onChange={(event) => updateField('raceDate', event.target.value)}
+              aria-invalid={Boolean(errors.raceDate)}
+              aria-describedby={errors.raceDate ? 'raceDate-error' : undefined}
+            />
+            <FieldError error={errors.raceDate} id="raceDate-error" />
+          </div>
+
+          <fieldset className="field time-field">
+            <legend>Tempo alvo para a prova</legend>
+            <div className="time-inputs">
+              {goalTimeFields.map(({ field, label, max }) => {
+                const errorId = `${field}-error`;
+
+                return (
+                  <div className="field" key={field}>
+                    <label htmlFor={field}>{label}</label>
+                    <input
+                      id={field}
+                      name={field}
+                      type="number"
+                      min="0"
+                      max={max}
+                      step="1"
+                      inputMode="numeric"
+                      value={values[field]}
+                      onChange={(event) => updateField(field, event.target.value)}
+                      aria-invalid={Boolean(errors[field])}
+                      aria-describedby={errors[field] ? errorId : undefined}
+                    />
+                    <FieldError error={errors[field]} id={errorId} />
+                  </div>
+                );
+              })}
+            </div>
+            <p className="field-hint">Informe o tempo total desejado para a distância selecionada.</p>
+          </fieldset>
+
+          <div className="field">
             <label htmlFor="weightKg">Peso (kg)</label>
             <input
               id="weightKg"
@@ -256,54 +311,17 @@ export default function TrainingForm({ onGenerate, onInputChange }: TrainingForm
             </select>
             <FieldError error={errors.sessionsPerWeek} id="sessionsPerWeek-error" />
           </div>
-
-          <div className="field">
-            <label htmlFor="weeksAvailable">Semanas até a prova</label>
-            <select
-              id="weeksAvailable"
-              name="weeksAvailable"
-              value={values.weeksAvailable}
-              onChange={(event) => updateField('weeksAvailable', event.target.value)}
-              aria-invalid={Boolean(errors.weeksAvailable)}
-              aria-describedby={errors.weeksAvailable ? 'weeksAvailable-error' : undefined}
-            >
-              <option value="">Selecione</option>
-              {Array.from({ length: 21 }, (_, index) => index + 4).map((count) => (
-                <option key={count} value={count}>
-                  {count} semanas
-                </option>
-              ))}
-            </select>
-            <FieldError error={errors.weeksAvailable} id="weeksAvailable-error" />
-          </div>
         </div>
 
-        <fieldset className="field preference-field">
-          <legend>Preferência de carga</legend>
-          <div className="preference-options">
-            <label>
-              <input
-                type="radio"
-                name="preference"
-                value="light"
-                checked={values.preference === 'light'}
-                onChange={(event) => updateField('preference', event.target.value)}
-              />
-              Mais leve
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="preference"
-                value="aggressive"
-                checked={values.preference === 'aggressive'}
-                onChange={(event) => updateField('preference', event.target.value)}
-              />
-              Mais agressiva
-            </label>
-          </div>
-          <FieldError error={errors.preference} id="preference-error" />
-        </fieldset>
+        <label className="adult-confirmation">
+          <input
+            type="checkbox"
+            name="adultConfirmed"
+            checked={values.adultConfirmed === true}
+            onChange={(event) => updateField('adultConfirmed', event.target.checked)}
+          />
+          Confirmo que tenho 18 anos ou mais
+        </label>
 
         <button className="primary-button" type="submit">
           Gerar plano

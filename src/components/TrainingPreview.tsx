@@ -34,6 +34,21 @@ function formatDistance(distanceKm: number): string {
   }).format(distanceKm);
 }
 
+function formatGoalTime(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+
+  return [hours, minutes, remainingSeconds]
+    .map((part) => String(part).padStart(2, '0'))
+    .join(':');
+}
+
+function formatRaceDate(date: string): string {
+  const [year, month, day] = date.split('-').map(Number);
+  return new Intl.DateTimeFormat('pt-BR').format(new Date(year, month - 1, day));
+}
+
 function formatWorkoutType(session: WorkoutSession): string {
   if (session.type === 'quality') {
     return session.qualityType ? `Qualidade · ${qualityNames[session.qualityType]}` : 'Qualidade';
@@ -56,6 +71,9 @@ export default function TrainingPreview({ profile, paces, bmi, plan }: TrainingP
         <p>
           {targetNames[profile.targetDistanceKm]} · {plan.weeks.length} semanas ·{' '}
           {profile.sessionsPerWeek} sessões por semana
+        </p>
+        <p className="race-goal-summary">
+          Prova: {formatRaceDate(profile.raceDate)} · Meta: {formatGoalTime(profile.goalTimeSeconds)}
         </p>
       </div>
 
@@ -89,7 +107,7 @@ export default function TrainingPreview({ profile, paces, bmi, plan }: TrainingP
         IMC informativo: <strong>{formattedBmi}</strong>
         <span> O IMC não é usado para definir carga ou ritmo.</span>
       </p>
-      {bmiGuidance && (
+      {profile.adultConfirmed && bmiGuidance && (
         <p className="notice" role="status">
           {bmiGuidance}
         </p>

@@ -198,32 +198,21 @@ h2 {
   color: #617665;
 }
 
-.preference-field {
-  margin-top: 24px;
-}
-
-.preference-field legend {
-  margin-bottom: 10px;
-}
-
-.preference-options {
+.adult-confirmation {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.preference-options label {
-  display: inline-flex;
   align-items: center;
-  gap: 9px;
-  padding: 12px 16px;
-  border: 1px solid #d5dfd4;
-  border-radius: 12px;
-  background: #fbfcfa;
+  gap: 10px;
+  margin-top: 20px;
+  color: #27382d;
+  font-size: 0.9rem;
+  font-weight: 600;
   cursor: pointer;
 }
 
-.preference-options input {
+.adult-confirmation input {
+  width: 18px;
+  min-height: 18px;
+  margin: 0;
   accent-color: #317348;
 }
 
