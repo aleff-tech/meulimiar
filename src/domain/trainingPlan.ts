@@ -1,4 +1,5 @@
-import { formatPace, type PaceTargets } from './paces';
+import { assessRaceGoal, formatPace, type PaceTargets } from './paces';
+import { getCalendarWeekWindows, type CalendarWeekWindow } from './calendar';
 import type { RunnerProfile, TargetDistanceKm } from './profile';
 
 export type QualityWorkoutType = 'threshold' | 'interval' | 'fartlek' | 'progressive';
@@ -9,7 +10,10 @@ export type WorkoutSegmentPhase =
   | 'work'
   | 'recovery'
   | 'moderate'
-  | 'cooldown';
+  | 'cooldown'
+  | 'race-pace';
+
+export type TrainingPhase = 'base' | 'development' | 'specific' | 'taper';
 
 export interface WorkoutSegment {
   phase: WorkoutSegmentPhase;
@@ -36,6 +40,9 @@ export interface WorkoutSession {
 
 export interface TrainingWeek {
   week: number;
+  phase: TrainingPhase;
+  startDate: string;
+  endDate: string;
   weeklyDistanceKm: number;
   sessions: WorkoutSession[];
 }
@@ -82,6 +89,7 @@ function durationAtEasyPace(distanceHundredths: number, easyPaceSecondsPerKm: nu
 }
 
 function sessionTypes(sessionsPerWeek: number): WorkoutSession['type'][] {
+  if (sessionsPerWeek <= 0) return [];
   if (sessionsPerWeek === 1) return ['easy'];
   if (sessionsPerWeek === 2) return ['easy', 'long'];
 
@@ -93,6 +101,8 @@ function distributeDistance(
   types: WorkoutSession['type'][],
   targetDistanceKm: TargetDistanceKm,
 ): number[] {
+  if (types.length === 0) return [];
+
   const easyCount = types.filter((type) => type === 'easy').length;
   const targetLongRunShare = longRunShare[targetDistanceKm];
   const easyShare = 1 - targetLongRunShare - (types.includes('quality') ? qualityShare : 0);
@@ -239,12 +249,13 @@ function repeatedWorkSegments(
   workPaceSecondsPerKm: number,
   recoveryPaceSecondsPerKm: number,
   workDescription: string,
+  workPhase: WorkoutSegmentPhase = 'work',
 ): WorkoutSegment[] {
   const segments: WorkoutSegment[] = [];
 
   for (let repetition = 0; repetition < set.repetitions; repetition += 1) {
     segments.push(
-      makeSegment('work', set.work.distanceHundredths, workPaceSecondsPerKm, workDescription),
+      makeSegment(workPhase, set.work.distanceHundredths, workPaceSecondsPerKm, workDescription),
     );
     if (repetition < set.recoveryCount) {
       segments.push(
@@ -271,6 +282,7 @@ function qualityPrescription(
   qualityType: QualityWorkoutType,
   mainHundredths: number,
   paces: PaceTargets,
+  racePaceSecondsPerKm?: number,
 ): { description: string; segments: WorkoutSegment[] } {
   const mainDistance = formatDistance(mainHundredths);
   const thresholdPace = `${formatPace(paces.thresholdSecondsPerKm)} min/km`;
@@ -313,6 +325,11 @@ function qualityPrescription(
     };
   }
   if (qualityType === 'interval') {
+    const workPaceSecondsPerKm = racePaceSecondsPerKm ?? paces.intervalSecondsPerKm;
+    const workPace = `${formatPace(workPaceSecondsPerKm)} min/km`;
+    const workPhase = racePaceSecondsPerKm === undefined ? 'work' : 'race-pace';
+    const workDescription =
+      racePaceSecondsPerKm === undefined ? 'Tiro' : 'Ritmo de prova';
     const set = fitRepeatSet(
       mainHundredths,
       [200, 300, 400].map((meters) => ({
@@ -324,7 +341,7 @@ function qualityPrescription(
         distanceHundredths: meters / 10,
       })),
     );
-    const work = `${set.repetitions} × ${set.work.label} a ${intervalPace} (${formatDistance(set.work.distanceHundredths)} por repetição)`;
+    const work = `${set.repetitions} × ${set.work.label} a ${workPace} (${formatDistance(set.work.distanceHundredths)} por repetição)`;
     const recoveries =
       set.recoveryCount > 0
         ? `${set.recoveryCount} × ${set.recovery.label} de recuperação leve a ${easyPace} (${formatDistance(set.recovery.distanceHundredths)})`
@@ -338,9 +355,10 @@ function qualityPrescription(
       description: `Tiros/intervalado: ${[work, recoveries, remaining].filter(Boolean).join('; ')} na parte principal.`,
       segments: repeatedWorkSegments(
         set,
-        paces.intervalSecondsPerKm,
+        workPaceSecondsPerKm,
         paces.easySecondsPerKm,
-        'Tiro',
+        workDescription,
+        workPhase,
       ),
     };
   }
@@ -381,13 +399,20 @@ function qualityPrescription(
   const easyHundredths = Math.floor(mainHundredths * 0.4 + 1e-8);
   const midpointHundredths = Math.floor(mainHundredths * 0.4 + 1e-8);
   const thresholdHundredths = mainHundredths - easyHundredths - midpointHundredths;
+  const finalPaceSecondsPerKm = racePaceSecondsPerKm ?? paces.thresholdSecondsPerKm;
+  const finalPhase = racePaceSecondsPerKm === undefined ? 'work' : 'race-pace';
+  const finalLabel = racePaceSecondsPerKm === undefined ? 'Limiar' : 'Ritmo de prova';
+  const finalDescription =
+    racePaceSecondsPerKm === undefined
+      ? `${formatDistance(thresholdHundredths)} em limiar a ${thresholdPace}`
+      : `${formatDistance(thresholdHundredths)} em ritmo de prova a ${formatPace(finalPaceSecondsPerKm)} min/km`;
 
   return {
-    description: `Progressivo: ${formatDistance(easyHundredths)} leve a ${easyPace}, ${formatDistance(midpointHundredths)} moderado a ${formatPace(midpointPaceSecondsPerKm)} min/km e ${formatDistance(thresholdHundredths)} em limiar a ${thresholdPace}.`,
+    description: `Progressivo: ${formatDistance(easyHundredths)} leve a ${easyPace}, ${formatDistance(midpointHundredths)} moderado a ${formatPace(midpointPaceSecondsPerKm)} min/km e ${finalDescription}.`,
     segments: [
       makeSegment('easy', easyHundredths, paces.easySecondsPerKm, 'Leve'),
       makeSegment('moderate', midpointHundredths, midpointPaceSecondsPerKm, 'Moderado'),
-      makeSegment('work', thresholdHundredths, paces.thresholdSecondsPerKm, 'Limiar'),
+      makeSegment(finalPhase, thresholdHundredths, finalPaceSecondsPerKm, finalLabel),
     ],
   };
 }
@@ -397,6 +422,7 @@ function sessionPaceAndDescription(
   qualityType: QualityWorkoutType | undefined,
   mainHundredths: number,
   paces: PaceTargets,
+  racePaceSecondsPerKm?: number,
 ): { paceSecondsPerKm: number; description: string; mainSegments: WorkoutSegment[] } {
   if (type === 'easy') {
     return {
@@ -416,7 +442,12 @@ function sessionPaceAndDescription(
     throw new Error('Uma sessão de qualidade precisa de um subtipo.');
   }
 
-  const prescription = qualityPrescription(qualityType, mainHundredths, paces);
+  const prescription = qualityPrescription(
+    qualityType,
+    mainHundredths,
+    paces,
+    racePaceSecondsPerKm,
+  );
   return {
     paceSecondsPerKm: qualityPaceSecondsPerKm(qualityType, paces),
     description: prescription.description,
@@ -454,9 +485,14 @@ function buildWarnings(profile: RunnerProfile, weeks: TrainingWeek[]): string[] 
   const warnings: string[] = [];
   const requiredWeeks = minimumWeeks[profile.targetDistanceKm];
 
-  if (profile.weeksAvailable < requiredWeeks) {
+  if (weeks.length < requiredWeeks) {
     warnings.push(
-      `O ciclo de ${profile.weeksAvailable} semanas é curto para a distância escolhida; não tente compensar aumentando a carga rapidamente.`,
+      `O ciclo de ${weeks.length} semanas é curto para a distância escolhida; não tente compensar aumentando a carga rapidamente.`,
+    );
+  }
+  if (weeks.length < 4) {
+    warnings.push(
+      'O ciclo tem menos de quatro semanas; mantenha a carga sem aumentos para tentar compensar o prazo curto.',
     );
   }
 
@@ -487,28 +523,67 @@ function buildWarnings(profile: RunnerProfile, weeks: TrainingWeek[]): string[] 
   return warnings;
 }
 
-export function buildTrainingPlan(profile: RunnerProfile, paces: PaceTargets): TrainingPlan {
-  const types = sessionTypes(profile.sessionsPerWeek);
-  const growthRate = profile.preference === 'aggressive' ? 0.08 : 0.05;
+function assignTrainingPhases(weekCount: number): TrainingPhase[] {
+  if (weekCount === 0) return [];
+  if (weekCount < 4) {
+    return [...Array.from({ length: weekCount - 1 }, () => 'base' as const), 'taper'];
+  }
+
+  const baseWeeks = Math.max(1, Math.floor(weekCount * 0.25));
+  const developmentWeeks = Math.max(1, Math.floor(weekCount * 0.3));
+  const specificWeeks = weekCount - baseWeeks - developmentWeeks - 1;
+
+  return [
+    ...Array.from({ length: baseWeeks }, () => 'base' as const),
+    ...Array.from({ length: developmentWeeks }, () => 'development' as const),
+    ...Array.from({ length: specificWeeks }, () => 'specific' as const),
+    'taper',
+  ];
+}
+
+function isSpecificRacePaceWorkout(
+  phase: TrainingPhase,
+  qualityType: QualityWorkoutType | undefined,
+): boolean {
+  return phase === 'specific' && (qualityType === 'interval' || qualityType === 'progressive');
+}
+
+export function buildTrainingPlan(
+  profile: RunnerProfile,
+  paces: PaceTargets,
+  today: Date,
+): TrainingPlan {
+  const calendarWeeks = getCalendarWeekWindows(today, profile.raceDate);
+  const phases = assignTrainingPhases(calendarWeeks.length);
+  const goalAssessment = assessRaceGoal(profile, paces);
+  const growthRate = 0.05;
   const weeks: TrainingWeek[] = [];
   let phasesShortened = false;
   let qualityChangedToEasy = false;
   let peakWeeklyDistanceHundredths = toHundredthsFloor(profile.currentWeeklyKm);
 
-  for (let weekNumber = 1; weekNumber <= profile.weeksAvailable; weekNumber += 1) {
+  for (let weekNumber = 1; weekNumber <= calendarWeeks.length; weekNumber += 1) {
+    const calendarWeek: CalendarWeekWindow = calendarWeeks[weekNumber - 1];
+    const phase = phases[weekNumber - 1];
     let targetWeeklyDistanceHundredths = peakWeeklyDistanceHundredths;
 
-    if (weekNumber === profile.weeksAvailable) {
+    if (phase === 'taper') {
       targetWeeklyDistanceHundredths = Math.floor(peakWeeklyDistanceHundredths * 0.6 + 1e-8);
-    } else if (weekNumber > 1 && weekNumber % 4 === 0) {
+    } else if (calendarWeeks.length >= 4 && weekNumber > 1 && weekNumber % 4 === 0) {
       targetWeeklyDistanceHundredths = Math.floor(peakWeeklyDistanceHundredths * 0.8 + 1e-8);
-    } else if (weekNumber > 1) {
+    } else if (calendarWeeks.length >= 4 && weekNumber > 1) {
       targetWeeklyDistanceHundredths = Math.floor(
         peakWeeklyDistanceHundredths * (1 + growthRate) + 1e-8,
       );
       peakWeeklyDistanceHundredths = targetWeeklyDistanceHundredths;
     }
 
+    targetWeeklyDistanceHundredths = Math.floor(
+      (targetWeeklyDistanceHundredths * calendarWeek.availableTrainingDays) / 7 + 1e-8,
+    );
+    const types = sessionTypes(
+      Math.min(profile.sessionsPerWeek, calendarWeek.availableTrainingDays),
+    );
     const distances = distributeDistance(
       targetWeeklyDistanceHundredths,
       types,
@@ -539,11 +614,15 @@ export function buildTrainingPlan(profile: RunnerProfile, paces: PaceTargets): T
         const mainHundredths =
           distanceHundredths - fittedPhases.warmupHundredths - fittedPhases.cooldownHundredths;
         const qualityType = type === 'quality' ? allocatedQualityType : undefined;
+        const racePaceSecondsPerKm = isSpecificRacePaceWorkout(phase, qualityType)
+          ? goalAssessment.prescribedRacePaceSecondsPerKm
+          : undefined;
         const { paceSecondsPerKm, description, mainSegments } = sessionPaceAndDescription(
           type,
           qualityType,
           mainHundredths,
           paces,
+          racePaceSecondsPerKm,
         );
 
         return {
@@ -577,12 +656,20 @@ export function buildTrainingPlan(profile: RunnerProfile, paces: PaceTargets): T
 
     weeks.push({
       week: weekNumber,
+      phase,
+      startDate: calendarWeek.startDate,
+      endDate: calendarWeek.endDate,
       weeklyDistanceKm: distances.reduce((total, distance) => total + distance, 0) / 100,
       sessions,
     });
   }
 
   const warnings = buildWarnings(profile, weeks);
+  if (goalAssessment.ambitious) {
+    warnings.push(
+      'A meta de prova é ambiciosa em relação à estimativa atual; nos blocos específicos, o ritmo foi limitado ao intervalo seguro.',
+    );
+  }
   if (phasesShortened) {
     warnings.push(
       'As fases de aquecimento e desaquecimento foram reduzidas proporcionalmente em sessões curtas para caber na distância planejada.',

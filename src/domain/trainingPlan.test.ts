@@ -3,569 +3,166 @@ import { calculatePaces } from './paces';
 import type { RunnerProfile } from './profile';
 import { buildTrainingPlan } from './trainingPlan';
 
+const today = new Date(2026, 0, 5);
+
 const baseProfile: RunnerProfile = {
   targetDistanceKm: 10,
   fiveKmTimeSeconds: 1350,
+  goalTimeSeconds: 45 * 60,
   weightKg: 70,
   heightCm: 175,
   currentWeeklyKm: 20,
   sessionsPerWeek: 4,
-  weeksAvailable: 8,
-  preference: 'light',
+  raceDate: '2026-03-29',
+  adultConfirmed: true,
 };
 
-const paces = calculatePaces(baseProfile.fiveKmTimeSeconds);
+function buildPlan(
+  profile: RunnerProfile = baseProfile,
+  planToday: Date = today,
+) {
+  return buildTrainingPlan(profile, calculatePaces(profile.fiveKmTimeSeconds), planToday);
+}
 
 describe('buildTrainingPlan', () => {
-  it('creates the selected number of weeks and sessions', () => {
-    const plan = buildTrainingPlan(baseProfile, paces);
+  it('creates a 12-week Monday-based calendar with the specified phase distribution', () => {
+    const plan = buildPlan();
+    const phaseCounts = plan.weeks.reduce<Record<string, number>>((counts, week) => {
+      counts[week.phase] = (counts[week.phase] ?? 0) + 1;
+      return counts;
+    }, {});
 
-    expect(plan.weeks).toHaveLength(8);
-    expect(plan.weeks.every((week) => week.sessions.length === 4)).toBe(true);
-    expect(plan.weeks[0].sessions.map((session) => session.type)).toEqual([
-      'quality',
-      'easy',
-      'long',
-      'easy',
-    ]);
-  });
-
-  it('caps light growth, cuts back, and tapers from the preceding peak', () => {
-    const plan = buildTrainingPlan(baseProfile, paces);
-
-    expect(plan.weeks.map((week) => week.weeklyDistanceKm)).toEqual([
-      20,
-      21,
-      22.05,
-      17.64,
-      23.15,
-      24.3,
-      25.51,
-      15.3,
-    ]);
+    expect(plan.weeks).toHaveLength(12);
+    expect(phaseCounts).toEqual({ base: 3, development: 3, specific: 5, taper: 1 });
+    expect(plan.weeks[0]).toMatchObject({
+      week: 1,
+      phase: 'base',
+      startDate: '2026-01-05',
+      endDate: '2026-01-11',
+    });
+    expect(plan.weeks[11]).toMatchObject({
+      week: 12,
+      phase: 'taper',
+      startDate: '2026-03-23',
+      endDate: '2026-03-29',
+    });
   });
 
   it.each([
-    ['light', 0.05],
-    ['aggressive', 0.08],
-  ] as const)('respects %s growth, recovery, and taper limits from a 1 km base', (
-    preference,
-    growthRate,
-  ) => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, currentWeeklyKm: 1, sessionsPerWeek: 1, weeksAvailable: 8, preference },
-      paces,
-    );
-    let peak = plan.weeks[0].weeklyDistanceKm;
+    [1, '2026-01-11', ['taper']],
+    [2, '2026-01-18', ['base', 'taper']],
+    [3, '2026-01-25', ['base', 'base', 'taper']],
+  ] as const)(
+    'warns and avoids compensatory volume growth in a %i-week cycle',
+    (_weeks, raceDate, expectedPhases) => {
+      const plan = buildPlan({ ...baseProfile, raceDate });
 
-    expect(plan.weeks[1].weeklyDistanceKm).toBe(1 + growthRate);
-
-    for (const week of plan.weeks.slice(1)) {
-      const currentHundredths = Math.round(week.weeklyDistanceKm * 100);
-
-      if (week.week === 8) {
-        expect(currentHundredths).toBeLessThanOrEqual(Math.floor(peak * 0.6 * 100 + 1e-8));
-      } else if (week.week % 4 === 0) {
-        expect(currentHundredths).toBeLessThanOrEqual(Math.floor(peak * 0.8 * 100 + 1e-8));
-      } else {
-        expect(currentHundredths).toBeLessThanOrEqual(
-          Math.floor(peak * (1 + growthRate) * 100 + 1e-8),
-        );
-        peak = week.weeklyDistanceKm;
-      }
-    }
-  });
-
-  it('uses the entered weekly distance as the first week even at a low base', () => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, currentWeeklyKm: 1, sessionsPerWeek: 1, weeksAvailable: 4 },
-      paces,
-    );
-
-    expect(plan.weeks[0].weeklyDistanceKm).toBe(1);
-    expect(plan.weeks[0].sessions).toHaveLength(1);
-    expect(plan.weeks[0].sessions[0].type).toBe('easy');
-  });
-
-  it('uses only easy and long-easy sessions when training twice per week', () => {
-    const plan = buildTrainingPlan({ ...baseProfile, sessionsPerWeek: 2 }, paces);
-
-    expect(plan.weeks[0].sessions.map((session) => session.type)).toEqual(['easy', 'long']);
-  });
-
-  it('provides ordered easy segments for easy and long sessions', () => {
-    const plan = buildTrainingPlan({ ...baseProfile, sessionsPerWeek: 2 }, paces);
-
-    for (const session of plan.weeks[0].sessions) {
-      expect(session.segments.map((segment) => segment.phase)).toEqual([
-        'warmup',
-        'easy',
-        'cooldown',
-      ]);
+      expect(plan.weeks.map((week) => week.phase)).toEqual(expectedPhases);
+      expect(plan.warnings.some((warning) => /ciclo.*curto/i.test(warning))).toBe(true);
+      expect(plan.warnings.some((warning) => /menos de quatro semanas/i.test(warning))).toBe(true);
       expect(
-        session.segments.every((segment) => segment.paceSecondsPerKm === paces.easySecondsPerKm),
+        plan.weeks
+          .every((week) => week.weeklyDistanceKm <= baseProfile.currentWeeklyKm),
       ).toBe(true);
-      expect(
-        Math.round(
-          session.segments.reduce((total, segment) => total + segment.distanceKm, 0) * 100,
-        ),
-      ).toBe(Math.round(session.distanceKm * 100));
-    }
-  });
-
-  it('rotates quality subtypes through an 8-week plan including recovery and taper weeks', () => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, currentWeeklyKm: 30, weeksAvailable: 8 },
-      paces,
-    );
-    const qualitySessions = plan.weeks.map((week) =>
-      week.sessions.filter((session) => session.type === 'quality'),
-    );
-
-    expect(qualitySessions.every((sessions) => sessions.length === 1)).toBe(true);
-    expect(qualitySessions.map((sessions) => sessions[0].qualityType)).toEqual([
-      'threshold',
-      'interval',
-      'fartlek',
-      'progressive',
-      'threshold',
-      'interval',
-      'fartlek',
-      'progressive',
-    ]);
-  });
-
-  it.each([2, 3, 4, 7])(
-    'preserves weekly totals and long-run shares after ordering %i sessions',
-    (sessionsPerWeek) => {
-      const targetShares = [
-        [3, 0.2],
-        [5, 0.25],
-        [10, 0.3],
-        [21.1, 0.35],
-        [42.2, 0.4],
-      ] as const;
-
-      for (const [targetDistanceKm, longRunShare] of targetShares) {
-        const plan = buildTrainingPlan(
-          { ...baseProfile, targetDistanceKm, currentWeeklyKm: 20, sessionsPerWeek },
-          paces,
-        );
-
-        expect(plan.weeks[0].sessions.find((session) => session.type === 'long')?.distanceKm).toBe(
-          20 * longRunShare,
-        );
-        for (const week of plan.weeks) {
-          const sum = week.sessions.reduce((total, session) => total + session.distanceKm, 0);
-          expect(Math.round(sum * 100)).toBe(Math.round(week.weeklyDistanceKm * 100));
-        }
-        if (sessionsPerWeek >= 3) {
-          expect(plan.weeks[0].sessions[0].type).toBe('quality');
-          expect(plan.weeks[0].sessions[1].type).toBe('easy');
-        }
-      }
     },
   );
 
-  it('partitions a quality session into easy warm-up, main work, and easy cool-down', () => {
-    const plan = buildTrainingPlan(baseProfile, paces);
-    const quality = plan.weeks[0].sessions[0];
+  it('limits growth to 5%, cuts back 20% in recovery weeks, and tapers to 60% of peak', () => {
+    const plan = buildPlan();
+    const distance = (weekNumber: number) =>
+      (plan.weeks[weekNumber - 1]?.weeklyDistanceKm ?? -1) /
+      (weekNumber === 12 ? 6 / 7 : 1);
 
-    expect(quality.qualityType).toBe('threshold');
-    expect(quality.warmupDistanceKm).toBe(1.66);
-    expect(quality.warmupDurationSeconds).toBe(598);
-    expect(quality.mainDistanceKm).toBe(1.51);
-    expect(quality.cooldownDistanceKm).toBe(0.83);
-    expect(quality.cooldownDurationSeconds).toBe(299);
-    expect(
-      quality.warmupDistanceKm + quality.mainDistanceKm + quality.cooldownDistanceKm,
-    ).toBe(quality.distanceKm);
-  });
-
-  it('keeps easy and long phase durations within one second of five-minute targets', () => {
-    const plan = buildTrainingPlan(baseProfile, paces);
-    const easy = plan.weeks[0].sessions.find((session) => session.type === 'easy');
-    const long = plan.weeks[0].sessions.find((session) => session.type === 'long');
-
-    expect(Math.abs((easy?.warmupDurationSeconds ?? 0) - 300)).toBeLessThanOrEqual(1);
-    expect(Math.abs((easy?.cooldownDurationSeconds ?? 0) - 300)).toBeLessThanOrEqual(1);
-    expect(Math.abs((long?.warmupDurationSeconds ?? 0) - 300)).toBeLessThanOrEqual(1);
-    expect(Math.abs((long?.cooldownDurationSeconds ?? 0) - 300)).toBeLessThanOrEqual(1);
-  });
-
-  it('scales easy phases when a short session cannot fit the phase targets', () => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, currentWeeklyKm: 1, sessionsPerWeek: 1, weeksAvailable: 4 },
-      paces,
-    );
-    const session = plan.weeks[0].sessions[0];
-
-    expect(session.warmupDistanceKm + session.cooldownDistanceKm).toBeLessThanOrEqual(
-      session.distanceKm / 2,
-    );
-    expect(plan.warnings.some((warning) => /fase/i.test(warning))).toBe(true);
-  });
-
-  it('changes an ineligible quality session to easy without increasing its allocated distance', () => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, currentWeeklyKm: 10, sessionsPerWeek: 4 },
-      paces,
-    );
-    const session = plan.weeks[0].sessions[0];
-
-    expect(session.type).toBe('easy');
-    expect(session.qualityType).toBeUndefined();
-    expect(session.distanceKm).toBe(2);
-    expect(session.segments.map((segment) => segment.phase)).toEqual([
-      'warmup',
-      'easy',
-      'cooldown',
-    ]);
-    expect(
-      Math.round(
-        session.segments.reduce((total, segment) => total + segment.distanceKm, 0) * 100,
-      ),
-    ).toBe(Math.round(session.distanceKm * 100));
-    expect(plan.warnings.some((warning) => /qualidade.*leve/i.test(warning))).toBe(true);
-  });
-
-  it('uses the right pace and workout format for each quality subtype', () => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, currentWeeklyKm: 30, weeksAvailable: 8 },
-      paces,
-    );
-    const qualitySessions = plan.weeks.slice(0, 4).map((week) =>
-      week.sessions.find((session) => session.type === 'quality'),
-    );
-
-    expect(qualitySessions.map((session) => session?.paceSecondsPerKm)).toEqual([
-      paces.thresholdSecondsPerKm,
-      paces.intervalSecondsPerKm,
-      paces.intervalSecondsPerKm,
-      paces.thresholdSecondsPerKm,
-    ]);
-    expect(qualitySessions[0]?.description).toMatch(/limiar/i);
-    expect(qualitySessions[1]?.description).toMatch(/tiro/i);
-    expect(qualitySessions[2]?.description).toMatch(/fartlek/i);
-    expect(qualitySessions[3]?.description).toMatch(/progressivo/i);
-  });
-
-  it('fits concrete threshold blocks and recoveries to the allocated main distance', () => {
-    const plan = buildTrainingPlan(baseProfile, paces);
-    const threshold = plan.weeks[0].sessions[0];
-
-    expect(threshold.description).toContain('2 × 3 min a 4:45 min/km (0.63 km por bloco)');
-    expect(threshold.description).toContain(
-      '1 × 1 min de recuperação leve a 6:00 min/km (0.16 km)',
-    );
-    expect(threshold.description).toContain('0.09 km leve');
-    expect(Math.round((2 * 0.63 + 0.16 + 0.09) * 100)).toBe(
-      Math.round(threshold.mainDistanceKm * 100),
-    );
-  });
-
-  it('creates ordered threshold work, recovery, and easy remainder segments', () => {
-    const plan = buildTrainingPlan(baseProfile, paces);
-    const threshold = plan.weeks[0].sessions[0];
-
-    expect(threshold.segments.map((segment) => segment.phase)).toEqual([
-      'warmup',
-      'work',
-      'recovery',
-      'work',
-      'easy',
-      'cooldown',
-    ]);
-    expect(threshold.segments.slice(1, 5).map((segment) => segment.distanceKm)).toEqual([
-      0.63,
-      0.16,
-      0.63,
-      0.09,
-    ]);
-    expect(threshold.segments[1].paceSecondsPerKm).toBe(paces.thresholdSecondsPerKm);
-    expect(threshold.segments[2].paceSecondsPerKm).toBe(paces.easySecondsPerKm);
-    expect(
-      Math.round(
-        threshold.segments.reduce((total, segment) => total + segment.distanceKm, 0) * 100,
-      ),
-    ).toBe(Math.round(threshold.distanceKm * 100));
-  });
-
-  it('fits concrete interval repetitions and recoveries to the allocated main distance', () => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, currentWeeklyKm: 30, weeksAvailable: 8 },
-      paces,
-    );
-    const intervals = plan.weeks[1].sessions[0];
-
-    expect(intervals.description).toContain('8 × 300 m a 4:25 min/km (0.30 km por repetição)');
-    expect(intervals.description).toContain(
-      '7 × 200 m de recuperação leve a 6:00 min/km (0.20 km)',
-    );
-    expect(intervals.description).toContain('0.01 km leve');
-    expect(Math.round((8 * 0.3 + 7 * 0.2 + 0.01) * 100)).toBe(
-      Math.round(intervals.mainDistanceKm * 100),
-    );
-  });
-
-  it('creates each interval repetition and recovery plus the short easy remainder', () => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, currentWeeklyKm: 30, weeksAvailable: 8 },
-      paces,
-    );
-    const intervals = plan.weeks[1].sessions[0];
-    const repeatedSegments = intervals.segments.slice(1, -2);
-
-    expect(repeatedSegments.map((segment) => segment.phase)).toEqual([
-      'work',
-      'recovery',
-      'work',
-      'recovery',
-      'work',
-      'recovery',
-      'work',
-      'recovery',
-      'work',
-      'recovery',
-      'work',
-      'recovery',
-      'work',
-      'recovery',
-      'work',
-    ]);
-    expect(repeatedSegments.filter((segment) => segment.phase === 'work')).toHaveLength(8);
-    expect(repeatedSegments.filter((segment) => segment.phase === 'recovery')).toHaveLength(7);
-    expect(
-      repeatedSegments
-        .filter((segment) => segment.phase === 'work')
-        .map((segment) => segment.distanceKm),
-    ).toEqual([0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]);
-    expect(
-      repeatedSegments
-        .filter((segment) => segment.phase === 'recovery')
-        .map((segment) => segment.distanceKm),
-    ).toEqual([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]);
-    expect(intervals.segments[1].paceSecondsPerKm).toBe(paces.intervalSecondsPerKm);
-    expect(intervals.segments[2].paceSecondsPerKm).toBe(paces.easySecondsPerKm);
-    expect(intervals.segments[intervals.segments.length - 2]?.phase).toBe('easy');
-    expect(intervals.segments[intervals.segments.length - 2]?.distanceKm).toBe(0.01);
-    expect(
-      Math.round(
-        intervals.segments.reduce((total, segment) => total + segment.distanceKm, 0) * 100,
-      ),
-    ).toBe(Math.round(intervals.distanceKm * 100));
-  });
-
-  it('fits complete one-minute fartlek cycles and easy running to the allocated main distance', () => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, currentWeeklyKm: 30, weeksAvailable: 8 },
-      paces,
-    );
-    const fartlek = plan.weeks[2].sessions[0];
-
-    expect(fartlek.description).toContain(
-      '10 ciclos de 1 min rápido a 4:25 min/km (0.22 km por ciclo) + 1 min leve a 6:00 min/km (0.16 km por ciclo)',
-    );
-    expect(fartlek.description).toContain('0.32 km leve extra');
-    expect(Math.round((10 * (0.22 + 0.16) + 0.32) * 100)).toBe(
-      Math.round(fartlek.mainDistanceKm * 100),
-    );
-  });
-
-  it('creates separate fartlek work and recovery cycles and easy remainder segments', () => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, currentWeeklyKm: 30, weeksAvailable: 8 },
-      paces,
-    );
-    const fartlek = plan.weeks[2].sessions[0];
-    const repeatedSegments = fartlek.segments.slice(1, -2);
-
-    expect(repeatedSegments).toHaveLength(20);
-    expect(repeatedSegments[0].phase).toBe('work');
-    expect(repeatedSegments[1].phase).toBe('recovery');
-    expect(repeatedSegments.filter((segment) => segment.phase === 'work')).toHaveLength(10);
-    expect(repeatedSegments.filter((segment) => segment.phase === 'recovery')).toHaveLength(10);
-    expect(repeatedSegments[0].distanceKm).toBe(0.22);
-    expect(repeatedSegments[1].distanceKm).toBe(0.16);
-    expect(repeatedSegments[0].paceSecondsPerKm).toBe(paces.intervalSecondsPerKm);
-    expect(repeatedSegments[1].paceSecondsPerKm).toBe(paces.easySecondsPerKm);
-    expect(fartlek.segments[fartlek.segments.length - 2]?.phase).toBe('easy');
-    expect(fartlek.segments[fartlek.segments.length - 2]?.distanceKm).toBe(0.32);
-    expect(
-      Math.round(
-        fartlek.segments.reduce((total, segment) => total + segment.distanceKm, 0) * 100,
-      ),
-    ).toBe(Math.round(fartlek.distanceKm * 100));
-  });
-
-  it('uses the rounded easy-threshold midpoint only for the progressive middle segment', () => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, currentWeeklyKm: 30, weeksAvailable: 8 },
-      paces,
-    );
-    const progressive = plan.weeks[3].sessions.find((session) => session.type === 'quality');
-
-    expect(progressive).toBeDefined();
-    if (!progressive) return;
-
-    expect(progressive.description).toContain('5:23 min/km');
-    expect(progressive.segments.map((segment) => segment.phase)).toEqual([
-      'warmup',
-      'easy',
-      'moderate',
-      'work',
-      'cooldown',
-    ]);
-    expect(progressive.segments.slice(1, 4).map((segment) => segment.distanceKm)).toEqual([
-      1.12,
-      1.12,
-      0.56,
-    ]);
-    expect(progressive.segments.slice(1, 4).map((segment) => segment.paceSecondsPerKm)).toEqual([
-      paces.easySecondsPerKm,
-      323,
-      paces.thresholdSecondsPerKm,
-    ]);
-    expect(
-      Math.round(
-        progressive.segments.reduce((total, segment) => total + segment.distanceKm, 0) * 100,
-      ),
-    ).toBe(Math.round(progressive.distanceKm * 100));
-  });
-
-  it('keeps one- and two-session plans quality-free while adding phases to every feasible session', () => {
-    for (const sessionsPerWeek of [1, 2]) {
-      const plan = buildTrainingPlan({ ...baseProfile, sessionsPerWeek }, paces);
-
-      for (const session of plan.weeks[0].sessions) {
-        expect(session.type).not.toBe('quality');
-        expect(session.warmupDistanceKm).toBeGreaterThan(0);
-        expect(session.cooldownDistanceKm).toBeGreaterThan(0);
-        expect(
-          Math.round(
-            (session.warmupDistanceKm + session.mainDistanceKm + session.cooldownDistanceKm) * 100,
-          ),
-        ).toBe(Math.round(session.distanceKm * 100));
+    let peak = distance(1);
+    for (let weekNumber = 2; weekNumber <= plan.weeks.length; weekNumber += 1) {
+      if (weekNumber === plan.weeks.length) {
+        expect(distance(weekNumber)).toBeLessThanOrEqual(peak * 0.6);
+      } else if (weekNumber % 4 === 0) {
+        expect(distance(weekNumber)).toBeLessThanOrEqual(peak * 0.8);
+      } else {
+        expect(distance(weekNumber)).toBeLessThanOrEqual(peak * 1.05);
+        peak = distance(weekNumber);
       }
     }
   });
 
-  it('rounds the long-run share down and assigns the remainder to an easy session', () => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, targetDistanceKm: 3, currentWeeklyKm: 1.01, sessionsPerWeek: 2 },
-      paces,
+  it('warns about an ambitious goal and caps specific interval and progressive race-pace segments', () => {
+    const profile = { ...baseProfile, goalTimeSeconds: 40 * 60 };
+    const paces = calculatePaces(profile.fiveKmTimeSeconds);
+    const plan = buildPlan(profile);
+    const specificWeeks = plan.weeks.filter((week) => String(week.phase) === 'specific');
+    const baseInterval = plan.weeks[1].sessions.find(
+      (session) => session.qualityType === 'interval',
     );
-    const [easy, long] = plan.weeks[0].sessions;
+    const interval = specificWeeks
+      .flatMap((week) => week.sessions)
+      .find((session) => session.qualityType === 'interval');
+    const progressive = specificWeeks
+      .flatMap((week) => week.sessions)
+      .find((session) => session.qualityType === 'progressive');
+    const intervalRacePaceSegments =
+      interval?.segments.filter((segment) => String(segment.phase) === 'race-pace') ?? [];
 
-    expect(easy.distanceKm).toBe(0.81);
-    expect(long.distanceKm).toBe(0.2);
+    expect(plan.warnings.some((warning) => /meta.*ambiciosa/i.test(warning))).toBe(true);
+    expect(intervalRacePaceSegments.length).toBeGreaterThan(0);
+    expect(
+      intervalRacePaceSegments.every(
+        (segment) => segment.paceSecondsPerKm === paces.intervalSecondsPerKm,
+      ),
+    ).toBe(true);
+    expect(
+      baseInterval?.segments.some((segment) => String(segment.phase) === 'race-pace'),
+    ).toBe(false);
+    expect(
+      baseInterval?.segments
+        .filter((segment) => String(segment.phase) === 'work')
+        .every((segment) => segment.paceSecondsPerKm === paces.intervalSecondsPerKm),
+    ).toBe(true);
+    expect(progressive?.segments[progressive.segments.length - 2]).toMatchObject({
+      phase: 'race-pace',
+      paceSecondsPerKm: paces.intervalSecondsPerKm,
+    });
   });
 
-  it('keeps the weekly distance equal to the sum of rounded sessions', () => {
-    const plan = buildTrainingPlan({ ...baseProfile, sessionsPerWeek: 7 }, paces);
+  it('caps partial-week sessions and volume by available training days, excluding race day', () => {
+    const partialToday = new Date(2026, 0, 7);
+    const profile = {
+      ...baseProfile,
+      currentWeeklyKm: 21,
+      sessionsPerWeek: 7,
+      raceDate: '2026-01-09',
+    };
+    const plan = buildPlan(profile, partialToday);
+    const [week] = plan.weeks;
 
-    for (const week of plan.weeks) {
-      const sessionDistance = week.sessions.reduce((sum, session) => sum + session.distanceKm, 0);
-      expect(Math.round(sessionDistance * 100)).toBe(Math.round(week.weeklyDistanceKm * 100));
-      expect(week.sessions.every((session) => session.distanceKm >= 0)).toBe(true);
-    }
+    expect(week).toMatchObject({
+      startDate: '2026-01-07',
+      endDate: '2026-01-09',
+      phase: 'taper',
+    });
+    expect(week?.sessions).toHaveLength(2);
+    expect(week?.weeklyDistanceKm).toBe((21 * 0.6 * 2) / 7);
+    expect(
+      (week?.sessions ?? []).reduce((total, session) => total + session.distanceKm, 0),
+    ).toBeCloseTo(week?.weeklyDistanceKm ?? 0, 2);
   });
 
-  it.each([
-    [3, 20],
-    [5, 25],
-    [10, 30],
-    [21.1, 35],
-    [42.2, 40],
-  ] as const)('uses the long-run share for a %s km target (expected %s km)', (
-    targetDistanceKm,
-    expectedLongRunKm,
-  ) => {
-    const plan = buildTrainingPlan(
-      {
-        ...baseProfile,
-        targetDistanceKm,
-        currentWeeklyKm: 100,
-        sessionsPerWeek: 2,
-        weeksAvailable: 6,
-      },
-      paces,
-    );
+  it.each([1, 2, 4, 7])(
+    'preserves distance totals and caps session counts for %i sessions per week',
+    (sessionsPerWeek) => {
+      const profile = { ...baseProfile, sessionsPerWeek };
+      const plan = buildPlan(profile);
 
-    expect(plan.weeks[0].sessions.find((session) => session.type === 'long')?.distanceKm).toBe(
-      expectedLongRunKm,
-    );
-  });
+      for (const week of plan.weeks) {
+        const availableTrainingDays = week.week === 12 ? 6 : 7;
+        const expectedSessions = Math.min(sessionsPerWeek, availableTrainingDays);
 
-  it('warns when the longest planned long run is below 75% of the target', () => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, targetDistanceKm: 42.2, currentWeeklyKm: 1, sessionsPerWeek: 2, weeksAvailable: 4 },
-      paces,
-    );
-
-    expect(plan.warnings.some((warning) => /longa/i.test(warning))).toBe(true);
-  });
-
-  it('warns when one weekly session means there is no long run', () => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, targetDistanceKm: 3, currentWeeklyKm: 20, sessionsPerWeek: 1, weeksAvailable: 6 },
-      paces,
-    );
-
-    expect(plan.warnings).toContain(
-      'Com uma sessão por semana, não é possível separar um treino longo das demais sessões; avalie se o volume planejado é adequado à distância da prova.',
-    );
-  });
-
-  it('does not warn about long-run distance when a 3 km plan reaches the threshold', () => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, targetDistanceKm: 3, currentWeeklyKm: 20, sessionsPerWeek: 2, weeksAvailable: 6 },
-      paces,
-    );
-
-    expect(plan.warnings.some((warning) => /longa/i.test(warning))).toBe(false);
-  });
-
-  it.each([
-    [3, 5],
-    [5, 5],
-    [10, 7],
-    [21.1, 11],
-    [42.2, 15],
-  ] as const)('warns when %i km has only %i weeks', (targetDistanceKm, weeksAvailable) => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, targetDistanceKm, weeksAvailable },
-      paces,
-    );
-
-    expect(plan.warnings.some((warning) => /^o ciclo de/i.test(warning))).toBe(true);
-  });
-
-  it.each([
-    [3, 6],
-    [5, 6],
-    [10, 8],
-    [21.1, 12],
-    [42.2, 16],
-  ] as const)('does not warn when %i km has the recommended %i weeks', (
-    targetDistanceKm,
-    weeksAvailable,
-  ) => {
-    const plan = buildTrainingPlan(
-      { ...baseProfile, targetDistanceKm, weeksAvailable },
-      paces,
-    );
-
-    expect(plan.warnings.some((warning) => /^o ciclo de/i.test(warning))).toBe(false);
-  });
-
-  it('does not change the training schedule when only BMI inputs change', () => {
-    const original = buildTrainingPlan(baseProfile, paces);
-    const changedMeasurements = buildTrainingPlan(
-      { ...baseProfile, weightKg: 120, heightCm: 200 },
-      paces,
-    );
-
-    expect(changedMeasurements).toEqual(original);
-  });
+        expect(week.sessions).toHaveLength(expectedSessions);
+        expect(week.sessions.reduce((sum, session) => sum + session.distanceKm, 0)).toBeCloseTo(
+          week.weeklyDistanceKm,
+          2,
+        );
+      }
+    },
+  );
 });
