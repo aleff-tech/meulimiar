@@ -220,6 +220,53 @@ describe('buildTrainingPlan', () => {
     expect(qualitySessions[3]?.description).toMatch(/progressivo/i);
   });
 
+  it('fits concrete threshold blocks and recoveries to the allocated main distance', () => {
+    const plan = buildTrainingPlan(baseProfile, paces);
+    const threshold = plan.weeks[0].sessions[0];
+
+    expect(threshold.description).toContain('2 × 3 min a 4:45 min/km (0.63 km por bloco)');
+    expect(threshold.description).toContain(
+      '1 × 1 min de recuperação leve a 6:00 min/km (0.16 km)',
+    );
+    expect(threshold.description).toContain('0.09 km leve');
+    expect(Math.round((2 * 0.63 + 0.16 + 0.09) * 100)).toBe(
+      Math.round(threshold.mainDistanceKm * 100),
+    );
+  });
+
+  it('fits concrete interval repetitions and recoveries to the allocated main distance', () => {
+    const plan = buildTrainingPlan(
+      { ...baseProfile, currentWeeklyKm: 30, weeksAvailable: 8 },
+      paces,
+    );
+    const intervals = plan.weeks[1].sessions[0];
+
+    expect(intervals.description).toContain('8 × 300 m a 4:25 min/km (0.30 km por repetição)');
+    expect(intervals.description).toContain(
+      '7 × 200 m de recuperação leve a 6:00 min/km (0.20 km)',
+    );
+    expect(intervals.description).toContain('0.01 km leve');
+    expect(Math.round((8 * 0.3 + 7 * 0.2 + 0.01) * 100)).toBe(
+      Math.round(intervals.mainDistanceKm * 100),
+    );
+  });
+
+  it('fits complete one-minute fartlek cycles and easy running to the allocated main distance', () => {
+    const plan = buildTrainingPlan(
+      { ...baseProfile, currentWeeklyKm: 30, weeksAvailable: 8 },
+      paces,
+    );
+    const fartlek = plan.weeks[2].sessions[0];
+
+    expect(fartlek.description).toContain(
+      '10 ciclos de 1 min rápido a 4:25 min/km (0.22 km por ciclo) + 1 min leve a 6:00 min/km (0.16 km por ciclo)',
+    );
+    expect(fartlek.description).toContain('0.32 km leve extra');
+    expect(Math.round((10 * (0.22 + 0.16) + 0.32) * 100)).toBe(
+      Math.round(fartlek.mainDistanceKm * 100),
+    );
+  });
+
   it('uses the rounded easy-threshold midpoint only for the progressive middle segment', () => {
     const plan = buildTrainingPlan(
       { ...baseProfile, currentWeeklyKm: 30, weeksAvailable: 8 },

@@ -150,6 +150,60 @@ function formatDistance(hundredths: number): string {
   return `${(hundredths / 100).toFixed(2)} km`;
 }
 
+interface RepeatOption {
+  label: string;
+  distanceHundredths: number;
+}
+
+interface RepeatSet {
+  repetitions: number;
+  work: RepeatOption;
+  recovery: RepeatOption;
+  recoveryCount: number;
+  remainingHundredths: number;
+}
+
+function fitRepeatSet(
+  mainHundredths: number,
+  workOptions: RepeatOption[],
+  recoveryOptions: RepeatOption[],
+): RepeatSet {
+  let best: RepeatSet | undefined;
+
+  for (const work of workOptions) {
+    for (const recovery of recoveryOptions) {
+      for (let repetitions = 1; ; repetitions += 1) {
+        const recoveryCount = repetitions - 1;
+        const usedHundredths =
+          repetitions * work.distanceHundredths + recoveryCount * recovery.distanceHundredths;
+        if (usedHundredths > mainHundredths) break;
+
+        const candidate: RepeatSet = {
+          repetitions,
+          work,
+          recovery,
+          recoveryCount,
+          remainingHundredths: mainHundredths - usedHundredths,
+        };
+        if (
+          !best ||
+          candidate.remainingHundredths < best.remainingHundredths ||
+          (candidate.remainingHundredths === best.remainingHundredths &&
+            candidate.repetitions < best.repetitions)
+        ) {
+          best = candidate;
+        }
+      }
+    }
+  }
+
+  if (!best) {
+    throw new RangeError('A distância principal não comporta um bloco de trabalho.');
+  }
+
+  return best;
+}
+
 function qualityDescription(
   qualityType: QualityWorkoutType,
   mainHundredths: number,
@@ -161,13 +215,69 @@ function qualityDescription(
   const easyPace = `${formatPace(paces.easySecondsPerKm)} min/km`;
 
   if (qualityType === 'threshold') {
-    return `Limiar: blocos de 2–5 min a ${thresholdPace}, com 1–2 min de corrida leve a ${easyPace} entre eles; complete ${mainDistance} na parte principal.`;
+    const set = fitRepeatSet(
+      mainHundredths,
+      [2, 3, 4, 5].map((minutes) => ({
+        label: `${minutes} min`,
+        distanceHundredths: durationToHundredths(
+          minutes * 60,
+          paces.thresholdSecondsPerKm,
+        ),
+      })),
+      [1, 2].map((minutes) => ({
+        label: `${minutes} min`,
+        distanceHundredths: durationToHundredths(minutes * 60, paces.easySecondsPerKm),
+      })),
+    );
+    const work = `${set.repetitions} × ${set.work.label} a ${thresholdPace} (${formatDistance(set.work.distanceHundredths)} por bloco)`;
+    const recoveries =
+      set.recoveryCount > 0
+        ? `${set.recoveryCount} × ${set.recovery.label} de recuperação leve a ${easyPace} (${formatDistance(set.recovery.distanceHundredths)})`
+        : undefined;
+    const remaining =
+      set.remainingHundredths > 0
+        ? `${formatDistance(set.remainingHundredths)} leve para completar ${mainDistance}`
+        : undefined;
+
+    return `Limiar: ${[work, recoveries, remaining].filter(Boolean).join('; ')} na parte principal.`;
   }
   if (qualityType === 'interval') {
-    return `Tiros/intervalado: repetições de 200–400 m a ${intervalPace}, com recuperação em corrida leve a ${easyPace}; complete ${mainDistance} na parte principal.`;
+    const set = fitRepeatSet(
+      mainHundredths,
+      [200, 300, 400].map((meters) => ({
+        label: `${meters} m`,
+        distanceHundredths: meters / 10,
+      })),
+      [100, 200].map((meters) => ({
+        label: `${meters} m`,
+        distanceHundredths: meters / 10,
+      })),
+    );
+    const work = `${set.repetitions} × ${set.work.label} a ${intervalPace} (${formatDistance(set.work.distanceHundredths)} por repetição)`;
+    const recoveries =
+      set.recoveryCount > 0
+        ? `${set.recoveryCount} × ${set.recovery.label} de recuperação leve a ${easyPace} (${formatDistance(set.recovery.distanceHundredths)})`
+        : undefined;
+    const remaining =
+      set.remainingHundredths > 0
+        ? `${formatDistance(set.remainingHundredths)} leve para completar ${mainDistance}`
+        : undefined;
+
+    return `Tiros/intervalado: ${[work, recoveries, remaining].filter(Boolean).join('; ')} na parte principal.`;
   }
   if (qualityType === 'fartlek') {
-    return `Fartlek: alterne 1 min rápido a ${intervalPace} e 1 min leve a ${easyPace} até completar ${mainDistance} na parte principal.`;
+    const fastHundredths = durationToHundredths(60, paces.intervalSecondsPerKm);
+    const easyHundredths = durationToHundredths(60, paces.easySecondsPerKm);
+    const cycleHundredths = fastHundredths + easyHundredths;
+    const cycles = Math.floor(mainHundredths / cycleHundredths);
+    const remainingHundredths = mainHundredths - cycles * cycleHundredths;
+    const cycleDescription = `${cycles} ciclos de 1 min rápido a ${intervalPace} (${formatDistance(fastHundredths)} por ciclo) + 1 min leve a ${easyPace} (${formatDistance(easyHundredths)} por ciclo)`;
+    const remaining =
+      remainingHundredths > 0
+        ? `${formatDistance(remainingHundredths)} leve extra`
+        : undefined;
+
+    return `Fartlek: ${[cycleDescription, remaining].filter(Boolean).join('; ')} para completar ${mainDistance} na parte principal.`;
   }
 
   const midpointPaceSecondsPerKm = Math.round(
