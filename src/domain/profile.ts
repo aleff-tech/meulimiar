@@ -3,6 +3,9 @@ export type TargetDistanceKm = 3 | 5 | 10 | 21.1 | 42.2;
 
 export interface RunnerFormValues {
   targetDistanceKm: string;
+  fiveKmHours: string;
+  fiveKmMinutes: string;
+  fiveKmSeconds: string;
   goalTimeHours: string;
   goalTimeMinutes: string;
   goalTimeSeconds: string;
@@ -16,6 +19,7 @@ export interface RunnerFormValues {
 
 export interface RunnerProfile {
   targetDistanceKm: TargetDistanceKm;
+  fiveKmTimeSeconds: number;
   goalTimeSeconds: number;
   weightKg: number;
   heightCm: number;
@@ -32,6 +36,9 @@ export type ProfileParseResult =
   | { ok: false; errors: ProfileErrors };
 type NumericFormField =
   | 'targetDistanceKm'
+  | 'fiveKmHours'
+  | 'fiveKmMinutes'
+  | 'fiveKmSeconds'
   | 'goalTimeHours'
   | 'goalTimeMinutes'
   | 'goalTimeSeconds'
@@ -81,6 +88,19 @@ export function parseRunnerProfile(values: RunnerFormValues, today: Date = new D
     errors.targetDistanceKm = 'Selecione uma distância de prova válida.';
   }
 
+  const fiveKmHours = readNumber(values, 'fiveKmHours', errors, 'Horas', 0, 23, true);
+  const fiveKmMinutes = readNumber(values, 'fiveKmMinutes', errors, 'Minutos', 0, 59, true);
+  const fiveKmSeconds = readNumber(values, 'fiveKmSeconds', errors, 'Segundos', 0, 59, true);
+
+  let fiveKmTimeSeconds: number | undefined;
+  if (fiveKmHours !== undefined && fiveKmMinutes !== undefined && fiveKmSeconds !== undefined) {
+    fiveKmTimeSeconds = fiveKmHours * 3600 + fiveKmMinutes * 60 + fiveKmSeconds;
+    if (fiveKmTimeSeconds < 60 || fiveKmTimeSeconds > 7200) {
+      errors.fiveKmMinutes = 'O tempo nos 5 km deve ficar entre 00:01:00 e 02:00:00.';
+      fiveKmTimeSeconds = undefined;
+    }
+  }
+
   const hours = readNumber(values, 'goalTimeHours', errors, 'Horas', 0, 23, true);
   const minutes = readNumber(values, 'goalTimeMinutes', errors, 'Minutos', 0, 59, true);
   const seconds = readNumber(values, 'goalTimeSeconds', errors, 'Segundos', 0, 59, true);
@@ -116,6 +136,7 @@ export function parseRunnerProfile(values: RunnerFormValues, today: Date = new D
     Object.keys(errors).length > 0 ||
     targetDistanceKm === undefined ||
     !isTargetDistance(targetDistanceKm) ||
+    fiveKmTimeSeconds === undefined ||
     goalTimeSeconds === undefined ||
     weightKg === undefined ||
     heightCm === undefined ||
@@ -130,6 +151,7 @@ export function parseRunnerProfile(values: RunnerFormValues, today: Date = new D
     ok: true,
     value: {
       targetDistanceKm,
+      fiveKmTimeSeconds,
       goalTimeSeconds,
       weightKg,
       heightCm,

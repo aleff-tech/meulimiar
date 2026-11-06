@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { parseRunnerProfile, type RunnerFormValues } from './profile';
 
-const validValues: RunnerFormValues = {
+const validValues: RunnerFormValues & {
+  fiveKmHours: string;
+  fiveKmMinutes: string;
+  fiveKmSeconds: string;
+} = {
   targetDistanceKm: '10',
+  fiveKmHours: '0',
+  fiveKmMinutes: '30',
+  fiveKmSeconds: '15',
   goalTimeHours: '0',
   goalTimeMinutes: '45',
   goalTimeSeconds: '30',
@@ -20,6 +27,7 @@ describe('parseRunnerProfile', () => {
       ok: true,
       value: {
         targetDistanceKm: 10,
+        fiveKmTimeSeconds: 1815,
         goalTimeSeconds: 2730,
         weightKg: 70,
         heightCm: 175,
@@ -29,6 +37,42 @@ describe('parseRunnerProfile', () => {
         adultConfirmed: true,
       },
     });
+  });
+
+  it('accepts 5 km times at the existing lower and upper bounds', () => {
+    const lowerBound = parseRunnerProfile({
+      ...validValues,
+      fiveKmHours: '0',
+      fiveKmMinutes: '1',
+      fiveKmSeconds: '0',
+    }, new Date(2026, 1, 20));
+    const upperBound = parseRunnerProfile({
+      ...validValues,
+      fiveKmHours: '2',
+      fiveKmMinutes: '0',
+      fiveKmSeconds: '0',
+    }, new Date(2026, 1, 20));
+
+    expect(lowerBound).toMatchObject({ ok: true, value: { fiveKmTimeSeconds: 60 } });
+    expect(upperBound).toMatchObject({ ok: true, value: { fiveKmTimeSeconds: 7200 } });
+  });
+
+  it('rejects 5 km times below and above the existing bounds', () => {
+    const belowLowerBound = parseRunnerProfile({
+      ...validValues,
+      fiveKmHours: '0',
+      fiveKmMinutes: '0',
+      fiveKmSeconds: '59',
+    }, new Date(2026, 1, 20));
+    const aboveUpperBound = parseRunnerProfile({
+      ...validValues,
+      fiveKmHours: '2',
+      fiveKmMinutes: '0',
+      fiveKmSeconds: '1',
+    }, new Date(2026, 1, 20));
+
+    expect(belowLowerBound).toMatchObject({ ok: false, errors: { fiveKmMinutes: expect.any(String) } });
+    expect(aboveUpperBound).toMatchObject({ ok: false, errors: { fiveKmMinutes: expect.any(String) } });
   });
 
   it('rejects goal-time components outside the clock range and non-positive totals', () => {
