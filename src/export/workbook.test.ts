@@ -90,11 +90,22 @@ describe('createTrainingWorkbook', () => {
     const firstWeek = plan.weeks[0];
     const qualitySession = firstWeek.sessions.find((session) => session.type === 'quality');
     const longSession = firstWeek.sessions.find((session) => session.type === 'long');
+    const intervalSession = plan.weeks
+      .flatMap((week) => week.sessions)
+      .find(
+        (session) =>
+          session.qualityType === 'interval' &&
+          session.segments.some((segment) => segment.phase === 'work'),
+      );
     const qualityRow = trainingRows.find(
       (row) => row[0] === firstWeek.week && row[1] === `Treino ${qualitySession?.session}`,
     );
     const longRow = trainingRows.find(
       (row) => row[0] === firstWeek.week && row[1] === `Treino ${longSession?.session}`,
+    );
+    const intervalRow = trainingRows.find(
+      (row) =>
+        row[0] === intervalSession?.week && row[1] === `Treino ${intervalSession?.session}`,
     );
 
     expect(summaryRows).toContainEqual(['Data da prova', '01/03/2026']);
@@ -114,6 +125,11 @@ describe('createTrainingWorkbook', () => {
     expect(longRow?.[headers.indexOf('Treino completo')]).toMatch(
       /^\d+,\d{2} km a \d+:\d{2} min\/km\./,
     );
+    expect(intervalSession).toBeDefined();
+    const intervalWorkout = intervalRow?.[headers.indexOf('Treino completo')];
+    expect(intervalWorkout).toBe(formatCompleteWorkout(intervalSession!));
+    expect(intervalWorkout).toContain('x Tiros');
+    expect(intervalWorkout).toContain('x Recup');
     expect(eventRow?.[5]).toBe('Data da prova: 01/03/2026');
     expect(eventRow?.[2]).toBe('');
     expect(eventRow?.[3]).toBe('');
