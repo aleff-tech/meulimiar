@@ -89,8 +89,12 @@ describe('createTrainingWorkbook', () => {
     const eventRow = rows.find((row) => row[1] === 'Prova');
     const firstWeek = plan.weeks[0];
     const qualitySession = firstWeek.sessions.find((session) => session.type === 'quality');
+    const longSession = firstWeek.sessions.find((session) => session.type === 'long');
     const qualityRow = trainingRows.find(
       (row) => row[0] === firstWeek.week && row[1] === `Treino ${qualitySession?.session}`,
+    );
+    const longRow = trainingRows.find(
+      (row) => row[0] === firstWeek.week && row[1] === `Treino ${longSession?.session}`,
     );
 
     expect(summaryRows).toContainEqual(['Data da prova', '01/03/2026']);
@@ -104,6 +108,11 @@ describe('createTrainingWorkbook', () => {
     expect(rows[1]).toContain('Base');
     expect(qualityRow?.[headers.indexOf('Treino completo')]).toBe(
       formatCompleteWorkout(qualitySession!),
+    );
+    expect(longSession).toBeDefined();
+    expect(longRow?.[headers.indexOf('Treino completo')]).toBe(formatCompleteWorkout(longSession!));
+    expect(longRow?.[headers.indexOf('Treino completo')]).toMatch(
+      /^\d+,\d{2} km a \d+:\d{2} min\/km\./,
     );
     expect(eventRow?.[5]).toBe('Data da prova: 01/03/2026');
     expect(eventRow?.[2]).toBe('');
